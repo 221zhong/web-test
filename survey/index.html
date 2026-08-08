@@ -3,23 +3,147 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#f4f7fb" />
-    <title>问卷调查</title>
+    <meta name="theme-color" content="#fff8f5" />
+    <title>你的喜好小调查</title>
     <link rel="stylesheet" href="style.css" />
   </head>
   <body>
-    <main class="card">
-      <span class="badge">SURVEY</span>
-      <h1>问卷调查</h1>
-      <p>第二个网站已经准备好，可以在这里添加问卷题目和数据提交功能。</p>
-
-      <div class="status">
-        <span aria-hidden="true">✓</span>
-        <div>
-          <strong>独立页面已创建</strong>
-          <small>它与告白网站使用不同的网址访问</small>
-        </div>
+    <header class="hero">
+      <span class="eyebrow">A LITTLE SURVEY FOR YOU</span>
+      <h1>你的喜好小调查</h1>
+      <p>想更了解你一点，也想把每一份心意都送到你的心坎里。</p>
+      <div class="progress" aria-label="填写进度">
+        <div class="progress-bar" id="progressBar"></div>
       </div>
+      <small id="progressText">已完成 0 / 12</small>
+    </header>
+
+    <main>
+      <form id="giftSurvey">
+        <section class="question-card">
+          <span class="number">01</span>
+          <label for="nickname">我应该怎么称呼你？</label>
+          <input id="nickname" name="称呼" type="text" placeholder="你的昵称" required />
+        </section>
+
+        <section class="question-card">
+          <span class="number">02</span>
+          <fieldset>
+            <legend>你最喜欢哪些颜色？<small>可以多选</small></legend>
+            <div class="choices colors">
+              <label><input type="checkbox" name="喜欢的颜色" value="粉色" /><span class="pink">粉色</span></label>
+              <label><input type="checkbox" name="喜欢的颜色" value="蓝色" /><span class="blue">蓝色</span></label>
+              <label><input type="checkbox" name="喜欢的颜色" value="紫色" /><span class="purple">紫色</span></label>
+              <label><input type="checkbox" name="喜欢的颜色" value="绿色" /><span class="green">绿色</span></label>
+              <label><input type="checkbox" name="喜欢的颜色" value="红色" /><span class="red">红色</span></label>
+              <label><input type="checkbox" name="喜欢的颜色" value="黑白灰" /><span class="mono">黑白灰</span></label>
+            </div>
+            <input name="其他颜色" type="text" placeholder="其他喜欢的颜色……" />
+          </fieldset>
+        </section>
+
+        <section class="question-card">
+          <span class="number">03</span>
+          <fieldset>
+            <legend>你喜欢哪种礼物风格？<small>可以多选</small></legend>
+            <div class="choices">
+              <label><input type="checkbox" name="礼物风格" value="可爱治愈" /><span>🧸 可爱治愈</span></label>
+              <label><input type="checkbox" name="礼物风格" value="简约高级" /><span>✨ 简约高级</span></label>
+              <label><input type="checkbox" name="礼物风格" value="浪漫精致" /><span>🌹 浪漫精致</span></label>
+              <label><input type="checkbox" name="礼物风格" value="实用日常" /><span>🎒 实用日常</span></label>
+              <label><input type="checkbox" name="礼物风格" value="有趣特别" /><span>🎨 有趣特别</span></label>
+            </div>
+          </fieldset>
+        </section>
+
+        <section class="question-card">
+          <span class="number">04</span>
+          <label for="snacks">你喜欢吃什么零食或甜点？</label>
+          <textarea id="snacks" name="零食甜点" placeholder="比如巧克力、薯片、蛋糕，也可以写喜欢的品牌和口味"></textarea>
+        </section>
+
+        <section class="question-card">
+          <span class="number">05</span>
+          <label for="drinks">你最喜欢喝什么？</label>
+          <textarea id="drinks" name="喜欢的饮品" placeholder="奶茶、咖啡、果茶……甜度和常点口味也可以告诉我"></textarea>
+        </section>
+
+        <section class="question-card">
+          <span class="number">06</span>
+          <fieldset>
+            <legend>收到哪种花会最开心？</legend>
+            <div class="choices">
+              <label><input type="radio" name="喜欢的花" value="玫瑰" /><span>🌹 玫瑰</span></label>
+              <label><input type="radio" name="喜欢的花" value="郁金香" /><span>🌷 郁金香</span></label>
+              <label><input type="radio" name="喜欢的花" value="向日葵" /><span>🌻 向日葵</span></label>
+              <label><input type="radio" name="喜欢的花" value="满天星" /><span>💐 满天星</span></label>
+              <label><input type="radio" name="喜欢的花" value="比起鲜花更喜欢别的礼物" /><span>🎁 更喜欢别的礼物</span></label>
+            </div>
+            <input name="其他喜欢的花" type="text" placeholder="其他喜欢的花……" />
+          </fieldset>
+        </section>
+
+        <section class="question-card">
+          <span class="number">07</span>
+          <fieldset>
+            <legend>你喜欢什么类型的香味？<small>可以多选</small></legend>
+            <div class="choices">
+              <label><input type="checkbox" name="喜欢的香味" value="花香" /><span>🌸 花香</span></label>
+              <label><input type="checkbox" name="喜欢的香味" value="果香" /><span>🍑 果香</span></label>
+              <label><input type="checkbox" name="喜欢的香味" value="木质香" /><span>🌲 木质香</span></label>
+              <label><input type="checkbox" name="喜欢的香味" value="奶甜香" /><span>🍦 奶甜香</span></label>
+              <label><input type="checkbox" name="喜欢的香味" value="清新皂感" /><span>🫧 清新皂感</span></label>
+              <label><input type="checkbox" name="喜欢的香味" value="不喜欢香味产品" /><span>🙅 不喜欢香味产品</span></label>
+            </div>
+          </fieldset>
+        </section>
+
+        <section class="question-card">
+          <span class="number">08</span>
+          <label for="accessories">平时喜欢戴什么饰品？</label>
+          <textarea id="accessories" name="饰品偏好" placeholder="项链、手链、耳饰、戒指，喜欢金色还是银色？不常戴也可以写"></textarea>
+        </section>
+
+        <section class="question-card">
+          <span class="number">09</span>
+          <label for="hobbies">最近最喜欢做什么，或者正在迷什么？</label>
+          <textarea id="hobbies" name="兴趣爱好" placeholder="动漫、游戏、运动、音乐、手工、收藏、喜欢的角色或明星……"></textarea>
+        </section>
+
+        <section class="question-card">
+          <span class="number">10</span>
+          <label for="sizes">如果收到衣服、鞋子或戒指，你的尺寸是？<small>不方便可以不填</small></label>
+          <textarea id="sizes" name="尺寸信息" placeholder="衣服尺码、鞋码、戒指尺寸等"></textarea>
+        </section>
+
+        <section class="question-card important">
+          <span class="number">11</span>
+          <label for="avoid">有什么一定要避开的东西？</label>
+          <textarea id="avoid" name="禁忌与过敏" placeholder="过敏食物、不喜欢的味道、颜色、材质或其他礼物雷区" required></textarea>
+        </section>
+
+        <section class="question-card wish">
+          <span class="number">12</span>
+          <label for="wishlist">最近有没有偷偷想要的东西？</label>
+          <textarea id="wishlist" name="愿望清单" placeholder="大胆写下来吧，说不定愿望会悄悄实现 ✨"></textarea>
+        </section>
+
+        <div class="submit-area">
+          <p>答案只会在本页生成汇总，不会自动上传。</p>
+          <button type="submit">完成小调查 ♥</button>
+        </div>
+      </form>
+
+      <section class="result" id="result" aria-hidden="true">
+        <span class="result-heart">♥</span>
+        <h2>谢谢你认真填写</h2>
+        <p>你的每一种喜欢，我都想认真记住。</p>
+        <div id="summary" class="summary"></div>
+        <button id="copyButton" type="button">复制答案发给对方</button>
+        <button id="editButton" class="secondary" type="button">返回修改</button>
+      </section>
     </main>
+
+    <script src="script.js"></script>
   </body>
 </html>
