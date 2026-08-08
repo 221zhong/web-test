@@ -3,31 +3,41 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#12072f" />
-    <title>给欣宝 💖</title>
+    <meta name="theme-color" content="#16091f" />
+    <title>欣宝，我喜欢你</title>
     <link rel="stylesheet" href="style.css" />
   </head>
   <body>
-    <canvas id="sky" aria-hidden="true"></canvas>
-    <div class="aurora aurora-one" aria-hidden="true"></div>
-    <div class="aurora aurora-two" aria-hidden="true"></div>
+    <canvas id="stars" aria-hidden="true"></canvas>
+    <div class="glow glow-one" aria-hidden="true"></div>
+    <div class="glow glow-two" aria-hidden="true"></div>
 
-    <main class="card" id="questionCard">
-      <div class="heart" aria-hidden="true">♥</div>
-      <p class="for-you">TO 欣宝</p>
-      <h1>你是臭宝吗？</h1>
-      <p class="hint">要认真选择哦～</p>
-      <div class="actions" id="actions">
-        <button class="answer yes" id="yesButton" type="button">是</button>
-        <button class="answer no" id="noButton" type="button">不是</button>
-      </div>
+    <main class="page">
+      <section class="letter" id="letter">
+        <div class="envelope-heart" aria-hidden="true">♥</div>
+        <p class="eyebrow">A LETTER FOR XINBAO</p>
+        <h1>致我最喜欢的<br /><em>欣宝</em></h1>
+        <div class="divider"><span>✦</span></div>
+        <p class="words">
+          遇见你以后，普通的日子也开始闪闪发光。<br />
+          想和你分享每一次日落，也想陪你走过每一个明天。
+        </p>
+        <p class="question">欣宝，你愿意和我在一起吗？</p>
+        <div class="actions">
+          <button class="button accept" id="acceptButton" type="button">我愿意 ♥</button>
+          <button class="button shy" id="shyButton" type="button">不愿意</button>
+        </div>
+        <p class="from">—— 喜欢你的伦伦</p>
+      </section>
     </main>
 
-    <section class="surprise" id="surprise" aria-hidden="true">
-      <div class="love-ring" aria-hidden="true"></div>
-      <p class="love-title" aria-label="伦伦是老大">
-        <span style="--i: 0">伦</span><span style="--i: 1">伦</span><span style="--i: 2">是</span><span style="--i: 3">老</span><span style="--i: 4">大</span>
-      </p>
+    <section class="answer" id="answer" aria-hidden="true">
+      <div class="rings" aria-hidden="true"></div>
+      <p class="answer-small">YOU &amp; ME · FOREVER</p>
+      <h2 aria-label="余生请多指教">
+        <span style="--i:0">余</span><span style="--i:1">生</span><span style="--i:2">请</span><span style="--i:3">多</span><span style="--i:4">指</span><span style="--i:5">教</span>
+      </h2>
+      <p class="answer-love">欣宝，我会一直好好爱你 ♥</p>
     </section>
 
     <script src="script.js"></script>

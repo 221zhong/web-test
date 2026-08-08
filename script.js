@@ -1,110 +1,110 @@
-const canvas = document.querySelector("#sky");
+const canvas = document.querySelector("#stars");
 const ctx = canvas.getContext("2d");
-const noButton = document.querySelector("#noButton");
-const yesButton = document.querySelector("#yesButton");
-const card = document.querySelector("#questionCard");
-const surprise = document.querySelector("#surprise");
+const acceptButton = document.querySelector("#acceptButton");
+const shyButton = document.querySelector("#shyButton");
+const letter = document.querySelector("#letter");
+const answer = document.querySelector("#answer");
 
-let particles = [];
 let width = 0;
 let height = 0;
-let lastBurst = 0;
+let sparks = [];
+let stars = [];
 
-function resizeCanvas() {
+function resize() {
   const dpr = Math.min(devicePixelRatio || 1, 2);
-  width = innerWidth;
-  height = innerHeight;
+  width = document.documentElement.clientWidth;
+  height = document.documentElement.clientHeight;
   canvas.width = width * dpr;
   canvas.height = height * dpr;
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  stars = Array.from({ length: Math.min(130, Math.floor(width * height / 8500)) }, () => ({
+    x: Math.random() * width, y: Math.random() * height, r: Math.random() * 1.5 + .25, phase: Math.random() * Math.PI * 2
+  }));
+  keepShyButtonInside();
 }
 
-function burst(x = Math.random() * width, y = Math.random() * height * 0.7, amount = 42) {
-  const hue = Math.random() * 360;
-  for (let i = 0; i < amount; i += 1) {
-    const angle = (Math.PI * 2 * i) / amount + Math.random() * 0.2;
-    const speed = 1.2 + Math.random() * 4.2;
-    particles.push({
-      x, y,
-      vx: Math.cos(angle) * speed,
-      vy: Math.sin(angle) * speed,
-      life: 1,
-      decay: 0.009 + Math.random() * 0.012,
-      hue: hue + Math.random() * 46 - 23,
-      size: 1.2 + Math.random() * 2.6
-    });
+function burst(x, y, count = 65) {
+  const hue = 335 + Math.random() * 35;
+  for (let i = 0; i < count; i += 1) {
+    const angle = Math.PI * 2 * i / count + Math.random() * .15;
+    const speed = 1.3 + Math.random() * 5;
+    sparks.push({ x, y, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed, life: 1, hue: hue + Math.random() * 20, size: 1 + Math.random() * 2.4 });
   }
 }
 
-function animate(time) {
-  ctx.fillStyle = "rgba(5, 2, 18, .16)";
-  ctx.fillRect(0, 0, width, height);
-
-  if (time - lastBurst > 850) {
-    burst();
-    lastBurst = time;
+function draw(time) {
+  ctx.clearRect(0, 0, width, height);
+  for (const star of stars) {
+    const alpha = .25 + (Math.sin(time * .0018 + star.phase) + 1) * .28;
+    ctx.beginPath(); ctx.arc(star.x, star.y, star.r, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(255,225,220,${alpha})`; ctx.fill();
   }
-
-  particles = particles.filter((particle) => particle.life > 0);
-  for (const p of particles) {
-    p.x += p.vx;
-    p.y += p.vy;
-    p.vy += 0.025;
-    p.vx *= 0.994;
-    p.life -= p.decay;
-    ctx.beginPath();
-    ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
-    ctx.fillStyle = `hsla(${p.hue}, 100%, 70%, ${p.life})`;
-    ctx.shadowBlur = 16;
-    ctx.shadowColor = `hsl(${p.hue}, 100%, 60%)`;
-    ctx.fill();
+  sparks = sparks.filter(s => s.life > 0);
+  for (const s of sparks) {
+    s.x += s.vx; s.y += s.vy; s.vy += .025; s.vx *= .994; s.life -= .012;
+    ctx.beginPath(); ctx.arc(s.x, s.y, s.size, 0, Math.PI * 2);
+    ctx.fillStyle = `hsla(${s.hue},100%,72%,${s.life})`;
+    ctx.shadowBlur = 14; ctx.shadowColor = `hsl(${s.hue},100%,65%)`; ctx.fill();
   }
   ctx.shadowBlur = 0;
-  requestAnimationFrame(animate);
+  requestAnimationFrame(draw);
 }
 
-function moveNoButton() {
+function moveShyButton(pointerX = -1000, pointerY = -1000) {
   const margin = 18;
-  const rect = noButton.getBoundingClientRect();
-  const viewportWidth = document.documentElement.clientWidth;
-  const viewportHeight = document.documentElement.clientHeight;
-  const maxX = Math.max(margin, viewportWidth - rect.width - margin);
-  const maxY = Math.max(margin, viewportHeight - rect.height - margin);
-  noButton.classList.add("running");
-  noButton.style.left = `${Math.min(maxX, margin + Math.random() * Math.max(0, maxX - margin))}px`;
-  noButton.style.top = `${Math.min(maxY, margin + Math.random() * Math.max(0, maxY - margin))}px`;
+  const rect = shyButton.getBoundingClientRect();
+  const maxX = Math.max(margin, width - rect.width - margin);
+  const maxY = Math.max(margin, height - rect.height - margin);
+  let nextX = margin;
+  let nextY = margin;
+
+  // 尽量选择一个远离当前指针的位置，避免按钮跑到指针下面。
+  for (let i = 0; i < 12; i += 1) {
+    nextX = margin + Math.random() * Math.max(0, maxX - margin);
+    nextY = margin + Math.random() * Math.max(0, maxY - margin);
+    const centerX = nextX + rect.width / 2;
+    const centerY = nextY + rect.height / 2;
+    if (Math.hypot(centerX - pointerX, centerY - pointerY) > 170) break;
+  }
+
+  shyButton.classList.add("running");
+  shyButton.style.left = `${Math.min(maxX, Math.max(margin, nextX))}px`;
+  shyButton.style.top = `${Math.min(maxY, Math.max(margin, nextY))}px`;
 }
 
-function keepNoButtonOnScreen() {
-  if (!noButton.classList.contains("running")) return;
+function keepShyButtonInside() {
+  if (!shyButton.classList.contains("running")) return;
   const margin = 18;
-  const rect = noButton.getBoundingClientRect();
-  const maxX = Math.max(margin, document.documentElement.clientWidth - rect.width - margin);
-  const maxY = Math.max(margin, document.documentElement.clientHeight - rect.height - margin);
-  noButton.style.left = `${Math.min(maxX, Math.max(margin, rect.left))}px`;
-  noButton.style.top = `${Math.min(maxY, Math.max(margin, rect.top))}px`;
+  const rect = shyButton.getBoundingClientRect();
+  shyButton.style.left = `${Math.max(margin, Math.min(width - rect.width - margin, rect.left))}px`;
+  shyButton.style.top = `${Math.max(margin, Math.min(height - rect.height - margin, rect.top))}px`;
 }
 
-noButton.addEventListener("pointerenter", moveNoButton);
-noButton.addEventListener("pointerdown", (event) => {
-  event.preventDefault();
-  moveNoButton();
-});
-noButton.addEventListener("focus", moveNoButton);
-
-yesButton.addEventListener("click", () => {
-  card.classList.add("hide");
-  noButton.hidden = true;
-  surprise.classList.add("show");
-  surprise.setAttribute("aria-hidden", "false");
-  for (let i = 0; i < 9; i += 1) {
-    setTimeout(() => burst(width * (0.15 + Math.random() * 0.7), height * (0.15 + Math.random() * 0.55), 64), i * 160);
+document.addEventListener("pointermove", event => {
+  if (shyButton.hidden) return;
+  const rect = shyButton.getBoundingClientRect();
+  const centerX = rect.left + rect.width / 2;
+  const centerY = rect.top + rect.height / 2;
+  if (Math.hypot(event.clientX - centerX, event.clientY - centerY) < 105) {
+    moveShyButton(event.clientX, event.clientY);
   }
 });
 
-addEventListener("resize", () => {
-  resizeCanvas();
-  keepNoButtonOnScreen();
+shyButton.addEventListener("pointerenter", event => moveShyButton(event.clientX, event.clientY));
+shyButton.addEventListener("pointerdown", event => { event.preventDefault(); moveShyButton(event.clientX, event.clientY); });
+shyButton.addEventListener("click", event => { event.preventDefault(); moveShyButton(); });
+shyButton.addEventListener("focus", () => { shyButton.blur(); moveShyButton(); });
+
+acceptButton.addEventListener("click", () => {
+  letter.classList.add("hide");
+  shyButton.hidden = true;
+  answer.classList.add("show");
+  answer.setAttribute("aria-hidden", "false");
+  for (let i = 0; i < 10; i += 1) {
+    setTimeout(() => burst(width * (.12 + Math.random() * .76), height * (.12 + Math.random() * .66)), i * 170);
+  }
 });
-resizeCanvas();
-requestAnimationFrame(animate);
+
+addEventListener("resize", resize);
+resize();
+requestAnimationFrame(draw);
