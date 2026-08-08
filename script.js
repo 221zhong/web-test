@@ -64,14 +64,25 @@ function animate(time) {
 }
 
 function moveNoButton() {
-  const margin = 14;
+  const margin = 18;
   const rect = noButton.getBoundingClientRect();
-  const maxX = Math.max(margin, innerWidth - rect.width - margin);
-  const maxY = Math.max(margin, innerHeight - rect.height - margin);
+  const viewportWidth = document.documentElement.clientWidth;
+  const viewportHeight = document.documentElement.clientHeight;
+  const maxX = Math.max(margin, viewportWidth - rect.width - margin);
+  const maxY = Math.max(margin, viewportHeight - rect.height - margin);
   noButton.classList.add("running");
-  noButton.style.left = `${margin + Math.random() * (maxX - margin)}px`;
-  noButton.style.top = `${margin + Math.random() * (maxY - margin)}px`;
-  noButton.style.transform = `rotate(${Math.random() * 20 - 10}deg)`;
+  noButton.style.left = `${Math.min(maxX, margin + Math.random() * Math.max(0, maxX - margin))}px`;
+  noButton.style.top = `${Math.min(maxY, margin + Math.random() * Math.max(0, maxY - margin))}px`;
+}
+
+function keepNoButtonOnScreen() {
+  if (!noButton.classList.contains("running")) return;
+  const margin = 18;
+  const rect = noButton.getBoundingClientRect();
+  const maxX = Math.max(margin, document.documentElement.clientWidth - rect.width - margin);
+  const maxY = Math.max(margin, document.documentElement.clientHeight - rect.height - margin);
+  noButton.style.left = `${Math.min(maxX, Math.max(margin, rect.left))}px`;
+  noButton.style.top = `${Math.min(maxY, Math.max(margin, rect.top))}px`;
 }
 
 noButton.addEventListener("pointerenter", moveNoButton);
@@ -91,6 +102,9 @@ yesButton.addEventListener("click", () => {
   }
 });
 
-addEventListener("resize", resizeCanvas);
+addEventListener("resize", () => {
+  resizeCanvas();
+  keepNoButtonOnScreen();
+});
 resizeCanvas();
 requestAnimationFrame(animate);
