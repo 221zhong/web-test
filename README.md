@@ -1,19 +1,36 @@
-# 学习经历网站
+# VLA 历史关键事件检测：论文精读站点
 
-这是一个按“一个网页，一段学习经历”组织的 GitHub Pages 学习站点。
+这是一个 GitHub Pages 友好的静态研究笔记站点。根目录 [`index.html`](./index.html) 只承担导航；每篇论文均部署在独立子目录，方便持续新增。
 
-## 当前内容
+## 当前 P0 页面
 
-| 学习经历 | 页面 | 主题 |
+| 优先级 | 工作 | 页面 |
 | --- | --- | --- |
-| 01 | [首页](./index.html) | 强化学习：从 Bellman、Q-learning 到 PPO、SAC、RLHF 与 VLA |
+| P0-1 | DDM-Net | [精读](./papers/ddm-net/index.html) |
+| P0-2 | FlowGEBD | [精读](./papers/flowgebd/index.html) |
+| P0-3 | CAG-QIL | [精读](./papers/cag-qil/index.html) |
+| P0-4 | Hierarchical Event Memory | [精读](./papers/hierarchical-event-memory/index.html) |
+| P0-5 | KEMO | [精读](./papers/kemo/index.html) |
 
-## 内容约定
+## 目录结构
 
-- 每一个独立的 HTML 页面只记录一段完整、可回溯的学习经历。
-- 新增学习经历时，创建独立页面，并在本表补充对应链接与主题。
-- 根目录的 `index.html` 目前为学习经历 01，也是 GitHub Pages 的入口页面。
+```text
+.
+├── index.html                 # 只做导航与路线总览
+├── style.css                  # 共享样式
+└── papers/
+    └── <paper-slug>/
+        ├── index.html         # 单篇精读
+        └── figures/           # 作者原始图与网页展示版本
+```
 
-## 本地预览
+## 图像原则
 
-在仓库根目录启动任意静态 HTTP 服务后，访问 `http://localhost:端口/`。
+- 仅保留研究动机、模型架构或核心机制图；实验结果只以数据表和文字解释。
+- 优先使用作者公开的 arXiv LaTeX 源码图，同时保存可展示的 PNG 和必要的原始 PDF/PNG。
+- CAG-QIL 未找到可核验的作者公开 LaTeX 方法图，因此其页面刻意不使用 PDF 裁图。
+- 不提供 ZIP 离线包。
+
+## 新增页面
+
+创建 `papers/<paper-slug>/index.html` 和同级 `figures/`，然后在根页增加导航卡片即可。页面中的图片必须使用相对路径，确保 GitHub Pages 可直接访问。
