@@ -1,1 +1,78 @@
-<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Motion-Aware SSL｜论文精读</title><link rel="stylesheet" href="../../style.css"></head><body><header><div class="wrap"><div class="eyebrow">P1 · Generic Event Boundary Detection</div><h1>Motion-Aware Self-Supervision</h1><p>用可微运动模块让无标签表征学习面向事件边界</p><nav><a href="../../index.html">← 返回导航</a><a href="../index.html">P1 总览</a></nav></div></header><main><article><p class="meta">Ayush K. Rai et al. · Dublin City University · WACV 2023 · <a href="https://openaccess.thecvf.com/content/WACV2023/html/K._Motion_Aware_Self-Supervision_for_Generic_Event_Boundary_Detection_WACV_2023_paper.html">论文</a> · <a href="https://arxiv.org/abs/2210.05574">arXiv</a> · <a href="https://github.com/rayush7/motion_ssl_gebd">代码</a></p><div class="toc"><a href="#summary">摘要</a><a href="#motivation">动机</a><a href="#method">方法</a><a href="#results">实验</a><a href="#limits">优劣</a><a href="#takeaway">总结</a></div><h2 id="summary">1. 核心摘要</h2><p>GEBD 不预设动作类别，而是找出人会自然感到“事件已切换”的时刻。本文认为，监督式动作分类表征会被类别标签束缚，复杂的边界网络又不一定真正学到运动；因而从对比式自监督预训练出发，在 ResNet-50 中加入可微 MotionSqueeze 层，再用相邻/远距离片段的对比目标学习时空表征。下游仅以较轻的边界头微调。作者在 Kinetics-GEBD 与 TAPOS 上验证：不设计显式 motion pretext task，也能得到适于边界的运动特征。</p><h2 id="motivation">2. 研究动机</h2><p>人对边界的判断既来自外观突变，也来自动作速度、方向或交互状态改变；这与“把视频归入固定类别”的分类训练目标不同。Kinetics-GEBD 还由多名标注者给出边界，天然包含语义主观性。作者的切入点是：自监督不受动作类别约束，若把运动建模放进编码器本身，表征可以同时覆盖空间与时间多样性。</p><h2 id="method">3. 方法论</h2><img class="figure" src="figures/fig1_architecture.png" alt="论文 Figure 1：两阶段 Motion-Aware SSL 架构"><p class="caption">Figure 1。作者 LaTeX 源码 <code>images/main_figure.png</code>：阶段一预训练带 MotionSqueeze 的 ResNet-50，阶段二微调 GEBD。</p><h3>3.1 两阶段训练</h3><p>阶段一将每个视频裁成片段，用 RGB 编码器抽取特征；MotionSqueeze 对相邻特征图做相关性与位移聚合，输出可学习的运动特征，而不是预先计算光流。四个时间采样/对比任务共同约束表示：近邻片段应保持一致、远距离片段应区分，促使模型理解时间变化。阶段二将编码器接入边界预测器，在带边界标签的数据上微调。</p><h3>3.2 对 VLA 的含义</h3><p>它提供的是“运动敏感表征”而非在线写入策略。若用于机器人，可把 gripper、末端位姿或接触信号当作与 MotionSqueeze 并列的运动证据，再由后级决定是否形成可持久化事件。</p><h2 id="results">4. 实验与结果</h2><p>作者在 Kinetics-GEBD 与 TAPOS 上按 Rel.Dis 阈值报告 F1（论文 Table 1、2），并以同一评测比较自监督基线。核心结论是加入可微运动层的自监督方案优于文中比较的其他自监督方法；论文也以定性图展示其预测边界更接近标注。本文不重绘实验图，以免把结果图当作方法图。</p><table><tr><th>证据</th><th>原文结论</th><th>解读</th></tr><tr><td>Table 1/2</td><td>同时在 Kinetics-GEBD、TAPOS 上评估 F1</td><td>避免只在单一视频域证明 motion 学习有效。</td></tr><tr><td>Table 3</td><td>对 MotionSqueeze 与训练设置做消融</td><td>性能归因于可学习运动模块，而非单纯换用 SSL。</td></tr></table><h2 id="limits">5. 优势与局限</h2><p><b>优势：</b>不依赖预计算光流；训练时不需运动专用伪任务；输出可作为通用边界候选器。<br><b>局限：</b>最终边界微调仍需要 GEBD 标注；论文验证的是离线视频边界，并未处理严格流式提交、历史记忆预算或机器人状态。</p><h2 id="takeaway">6. 总结</h2><p>最值得借鉴的是把“运动”做成可端到端学习的表征组件，而不是固定前处理。对 VLA，适合作为低层候选信号；是否写入长期记忆仍应由语义确认和任务状态共同决定。</p></article></main></body></html>
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Motion-Aware SSL｜论文精读</title>
+<link rel="stylesheet" href="../../style.css">
+</head>
+<body>
+<header>
+<div class="wrap">
+<div class="eyebrow">P1 · Generic Event Boundary Detection</div>
+<h1>Motion-Aware Self-Supervision</h1>
+<p>用可微运动模块让无标签表征学习面向事件边界</p>
+<nav>
+<a href="../../index.html">← 返回导航</a>
+<a href="../index.html">P1 总览</a>
+</nav>
+</div>
+</header>
+<main>
+<article>
+<p class="meta">Ayush K. Rai et al. · Dublin City University · WACV 2023 · <a href="https://openaccess.thecvf.com/content/WACV2023/html/K._Motion_Aware_Self-Supervision_for_Generic_Event_Boundary_Detection_WACV_2023_paper.html">论文</a> · <a href="https://arxiv.org/abs/2210.05574">arXiv</a> · <a href="https://github.com/rayush7/motion_ssl_gebd">代码</a>
+</p>
+<div class="toc">
+<a href="#summary">摘要</a>
+<a href="#motivation">动机</a>
+<a href="#method">方法</a>
+<a href="#results">实验</a>
+<a href="#limits">优劣</a>
+<a href="#takeaway">总结</a>
+</div>
+<h2 id="summary">1. 核心摘要</h2>
+<p>GEBD 不预设动作类别，而是找出人会自然感到“事件已切换”的时刻。本文认为，监督式动作分类表征会被类别标签束缚，复杂的边界网络又不一定真正学到运动；因而从对比式自监督预训练出发，在 ResNet-50 中加入可微 MotionSqueeze 层，再用相邻/远距离片段的对比目标学习时空表征。下游仅以较轻的边界头微调。作者在 Kinetics-GEBD 与 TAPOS 上验证：不设计显式 motion pretext task，也能得到适于边界的运动特征。</p>
+<h2 id="motivation">2. 研究动机</h2>
+<p>人对边界的判断既来自外观突变，也来自动作速度、方向或交互状态改变；这与“把视频归入固定类别”的分类训练目标不同。Kinetics-GEBD 还由多名标注者给出边界，天然包含语义主观性。作者的切入点是：自监督不受动作类别约束，若把运动建模放进编码器本身，表征可以同时覆盖空间与时间多样性。</p>
+<h2 id="method">3. 方法论</h2>
+<img class="figure" src="figures/fig1_architecture.png" alt="论文 Figure 1：两阶段 Motion-Aware SSL 架构">
+<p class="caption">Figure 1。作者 LaTeX 源码 <code>images/main_figure.png</code>：阶段一预训练带 MotionSqueeze 的 ResNet-50，阶段二微调 GEBD。</p>
+<h3>3.1 两阶段训练</h3>
+<p>阶段一将每个视频裁成片段，用 RGB 编码器抽取特征；MotionSqueeze 对相邻特征图做相关性与位移聚合，输出可学习的运动特征，而不是预先计算光流。四个时间采样/对比任务共同约束表示：近邻片段应保持一致、远距离片段应区分，促使模型理解时间变化。阶段二将编码器接入边界预测器，在带边界标签的数据上微调。</p>
+<h3>3.2 对 VLA 的含义</h3>
+<p>它提供的是“运动敏感表征”而非在线写入策略。若用于机器人，可把 gripper、末端位姿或接触信号当作与 MotionSqueeze 并列的运动证据，再由后级决定是否形成可持久化事件。</p>
+<h3>3.3 MotionSqueeze 为什么不同于离线光流</h3>
+<p>MotionSqueeze 位于 ResNet-50 的中间特征图上：它以相邻时刻的局部特征相关性构造位移响应，并以可微操作将这些响应压缩回运动特征图。因此，运动不是先离线算好、再作为一个固定通道拼接；梯度能从最终自监督目标回传到产生运动证据的视觉表征。作者的主张也更克制：模型学习了对 motion 有反应的表征，并非声称恢复了光学流的物理真值。</p>
+<h3>3.4 预训练与下游的接口</h3>
+<p>预训练阶段，修改后的 ResNet-50 从同一视频采样多个片段，以对比式目标拉近语义/时间关系合适的 view、拉开不应混同的片段。下游 GEBD 微调时，编码器输出成为边界分类器的输入。也就是说，标签只在第二阶段用于边界判别；作者没有将无标签预训练直接当作可部署的边界 detector。这个区分对于把该方法迁移到机器人数据很重要：无标签轨迹可先训练表征，少量事件标注再校准阈值与头部。</p>
+<h2 id="results">4. 实验与结果</h2>
+<p>作者在 Kinetics-GEBD 与 TAPOS 上按 Rel.Dis 阈值报告 F1（论文 Table 1、2），并以同一评测比较自监督基线。核心结论是加入可微运动层的自监督方案优于文中比较的其他自监督方法；论文也以定性图展示其预测边界更接近标注。本文不重绘实验图，以免把结果图当作方法图。</p>
+<table>
+<tr>
+<th>证据</th>
+<th>原文结论</th>
+<th>解读</th>
+</tr>
+<tr>
+<td>Table 1/2</td>
+<td>同时在 Kinetics-GEBD、TAPOS 上评估 F1</td>
+<td>避免只在单一视频域证明 motion 学习有效。</td>
+</tr>
+<tr>
+<td>Table 3</td>
+<td>对 MotionSqueeze 与训练设置做消融</td>
+<td>性能归因于可学习运动模块，而非单纯换用 SSL。</td>
+</tr>
+</table>
+<h3>4.1 实验边界</h3>
+<p>两套数据使用的是“相对距离容忍阈值下的 F1”，不同阈值反映预测点离人工边界多远仍算匹配。故应看完整阈值曲线/表格的趋势，而不是挑一个阈值宣称通用胜利。Table 3 的组件消融更适合回答本文方法问题：若移除 motion-aware 设计，性能下降，说明并非仅由 SSL 名称带来收益。论文未报告机器人控制成功率、固定 memory budget 下的 recall 或在线延迟，不能由 GEBD F1 直接推断这些指标。</p>
+<h2 id="limits">5. 优势与局限</h2>
+<p>
+<b>优势：</b>不依赖预计算光流；训练时不需运动专用伪任务；输出可作为通用边界候选器。<br>
+<b>局限：</b>最终边界微调仍需要 GEBD 标注；论文验证的是离线视频边界，并未处理严格流式提交、历史记忆预算或机器人状态。</p>
+<h2 id="takeaway">6. 总结</h2>
+<p>最值得借鉴的是把“运动”做成可端到端学习的表征组件，而不是固定前处理。对 VLA，适合作为低层候选信号；是否写入长期记忆仍应由语义确认和任务状态共同决定。</p>
+</article>
+</main>
+</body>
+</html>

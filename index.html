@@ -1,1 +1,107 @@
-<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>VLA 历史关键事件检测｜论文导航</title><link rel="stylesheet" href="style.css"></head><body><header><div class="wrap"><div class="eyebrow">Research Notes · Navigation</div><h1>VLA 历史关键事件检测</h1><p>历史记忆 / 关键事件检测 / 流式视频与视频多模态模型</p></div></header><main><section class="lead"><b>页面定位：</b>根页只承担导航与研究路线总览；每一篇精读均是独立子页面。图像仅来自可核验的作者 LaTeX 源码，实验结果不使用图片。</section><h2>P0 路线总览</h2><table><tr><th>环节</th><th>可参考工作</th><th>面向 VLA 的设计含义</th></tr><tr><td>候选生成</td><td>FlowGEBD、KEMO</td><td>用因果 motion / robot-state 峰值把密集视频压缩成少数候选。</td></tr><tr><td>语义确认</td><td>DDM-Net、KEMO</td><td>appearance 与 motion 分开取证，再确认是否值得写入。</td></tr><tr><td>在线提交</td><td>CAG-QIL</td><td>明确区分 pending、active 与 committed，避免过早落库。</td></tr><tr><td>长期维护</td><td>Hierarchical Event Memory</td><td>近期细、远期粗，按事件尺度分配内存并去冗余。</td></tr><tr><td>控制验证</td><td>KEMO</td><td>以 VLA 的任务/子任务成功率检验记忆选择，而非只测边界 F1。</td></tr></table><h2>P0 论文精读</h2><section class="grid"><a class="paper-card" href="papers/ddm-net/index.html"><span class="tag">P0-1 · 语义边界确认</span><h3>DDM-Net：Progressive Attention on Multi-Level Dense Difference Maps</h3><p>DDM-Net 面向 Generic Event Boundary Detection（GEBD）：不预设动作类别，只判断人类会自然感到“事件切换”的时刻。它以多层视觉特征差替代单一光流，并以 progressive att…</p><p class="meta">Tang et al. · CVPR 2022</p></a><a class="paper-card" href="papers/flowgebd/index.html"><span class="tag">P0-2 · 低成本候选生成</span><h3>FlowGEBD：What’s in the Flow?</h3><p>FlowGEBD 探索一个轻量的 GEBD 路径：不训练神经网络，仅依赖运动线索寻找边界。它组合像素追踪与 flow normalization 两个非参数算法，并在末端进行时间 refinement；论文报告 Kineti…</p><p class="meta">Gothe et al. · WACV 2024</p></a><a class="paper-card" href="papers/cag-qil/index.html"><span class="tag">P0-3 · 在线提交决策</span><h3>CAG-QIL：Context-Aware Actionness Grouping via Q Imitation Learning</h3><p>CAG-QIL 提出 Online Temporal Action Localization（On-TAL）：系统在视频流中立即输出动作实例，不能访问未来帧，历史 proposal 也不能事后改写。它用 context-aw…</p><p class="meta">Kang et al. · ICCV 2021</p></a><a class="paper-card" href="papers/hierarchical-event-memory/index.html"><span class="tag">P0-4 · 分层事件存储</span><h3>Hierarchical Event Memory for Accurate and Low-latency Online Video Temporal Grounding</h3><p>该工作处理 Online Video Temporal Grounding：给定语言 query，在无法看未来帧的长视频流中尽早定位目标事件。核心是把历史由帧队列变为多尺度 event proposal memory，并用 …</p><p class="meta">Zheng et al. · ICCV 2025</p></a><a class="paper-card" href="papers/kemo/index.html"><span class="tag">P0-5 · VLA 端到端验证</span><h3>KEMO：Event-Driven Keyframe Memory for Long-Horizon Robot Manipulation with VLA Policies</h3><p>KEMO 是五篇中最贴近 VLA 历史关键事件检测的工作。它不保存稠密轨迹，也不依赖在线任务分解：先用机器人运动学显著性提出关键帧，再以视觉去重确认，并把有序 memory token 注入 π0.5。论文在六个真实双臂任务…</p><p class="meta">Zeng et al. · arXiv 2026</p></a></section><h2>站点约定</h2><div class="card"><p>新增工作请在 <code>papers/&lt;paper-slug&gt;/</code> 创建独立 <code>index.html</code> 与本地 <code>figures/</code>；根页只新增导航卡片。原图优先来源为 arXiv LaTeX 源码；若没有可核验源码图，则说明原因并省略图片，不用 PDF 页面裁图替代。</p></div></main></body></html>
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>VLA 历史关键事件检测｜论文导航</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+<div class="wrap">
+<div class="eyebrow">Research Notes · Navigation</div>
+<h1>VLA 历史关键事件检测</h1>
+<p>历史记忆 / 关键事件检测 / 流式视频与视频多模态模型</p>
+</div>
+</header>
+<main>
+<section class="lead">
+<b>页面定位：</b>根页只承担导航与研究路线总览；每一篇精读均是独立子页面。图像仅来自可核验的作者 LaTeX 源码，实验结果不使用图片。</section>
+<h2>P0 路线总览</h2>
+<table>
+<tr>
+<th>环节</th>
+<th>可参考工作</th>
+<th>面向 VLA 的设计含义</th>
+</tr>
+<tr>
+<td>候选生成</td>
+<td>FlowGEBD、KEMO</td>
+<td>用因果 motion / robot-state 峰值把密集视频压缩成少数候选。</td>
+</tr>
+<tr>
+<td>语义确认</td>
+<td>DDM-Net、KEMO</td>
+<td>appearance 与 motion 分开取证，再确认是否值得写入。</td>
+</tr>
+<tr>
+<td>在线提交</td>
+<td>CAG-QIL</td>
+<td>明确区分 pending、active 与 committed，避免过早落库。</td>
+</tr>
+<tr>
+<td>长期维护</td>
+<td>Hierarchical Event Memory</td>
+<td>近期细、远期粗，按事件尺度分配内存并去冗余。</td>
+</tr>
+<tr>
+<td>控制验证</td>
+<td>KEMO</td>
+<td>以 VLA 的任务/子任务成功率检验记忆选择，而非只测边界 F1。</td>
+</tr>
+</table>
+<h2>P0 论文精读</h2>
+<section class="grid">
+<a class="paper-card" href="papers/ddm-net/index.html">
+<span class="tag">P0-1 · 语义边界确认</span>
+<h3>DDM-Net：Progressive Attention on Multi-Level Dense Difference Maps</h3>
+<p>DDM-Net 面向 Generic Event Boundary Detection（GEBD）：不预设动作类别，只判断人类会自然感到“事件切换”的时刻。它以多层视觉特征差替代单一光流，并以 progressive att…</p>
+<p class="meta">Tang et al. · CVPR 2022</p>
+</a>
+<a class="paper-card" href="papers/flowgebd/index.html">
+<span class="tag">P0-2 · 低成本候选生成</span>
+<h3>FlowGEBD：What’s in the Flow?</h3>
+<p>FlowGEBD 探索一个轻量的 GEBD 路径：不训练神经网络，仅依赖运动线索寻找边界。它组合像素追踪与 flow normalization 两个非参数算法，并在末端进行时间 refinement；论文报告 Kineti…</p>
+<p class="meta">Gothe et al. · WACV 2024</p>
+</a>
+<a class="paper-card" href="papers/cag-qil/index.html">
+<span class="tag">P0-3 · 在线提交决策</span>
+<h3>CAG-QIL：Context-Aware Actionness Grouping via Q Imitation Learning</h3>
+<p>CAG-QIL 提出 Online Temporal Action Localization（On-TAL）：系统在视频流中立即输出动作实例，不能访问未来帧，历史 proposal 也不能事后改写。它用 context-aw…</p>
+<p class="meta">Kang et al. · ICCV 2021</p>
+</a>
+<a class="paper-card" href="papers/hierarchical-event-memory/index.html">
+<span class="tag">P0-4 · 分层事件存储</span>
+<h3>Hierarchical Event Memory for Accurate and Low-latency Online Video Temporal Grounding</h3>
+<p>该工作处理 Online Video Temporal Grounding：给定语言 query，在无法看未来帧的长视频流中尽早定位目标事件。核心是把历史由帧队列变为多尺度 event proposal memory，并用 …</p>
+<p class="meta">Zheng et al. · ICCV 2025</p>
+</a>
+<a class="paper-card" href="papers/kemo/index.html">
+<span class="tag">P0-5 · VLA 端到端验证</span>
+<h3>KEMO：Event-Driven Keyframe Memory for Long-Horizon Robot Manipulation with VLA Policies</h3>
+<p>KEMO 是五篇中最贴近 VLA 历史关键事件检测的工作。它不保存稠密轨迹，也不依赖在线任务分解：先用机器人运动学显著性提出关键帧，再以视觉去重确认，并把有序 memory token 注入 π0.5。论文在六个真实双臂任务…</p>
+<p class="meta">Zeng et al. · arXiv 2026</p>
+</a>
+</section>
+<h2>P1 / P2 进阶精读</h2>
+<section class="grid">
+<a class="paper-card" href="papers/index.html">
+<span class="tag">P1 · 机制补全</span>
+<h3>从边界候选到长期历史</h3>
+<p>六篇论文覆盖运动表征、在线实例定位、选择性历史与事件级 VLM memory。</p>
+<p class="meta">进入 P1 / P2 总览</p>
+</a>
+<a class="paper-card" href="papers/ego4d-episodic-memory/index.html">
+<span class="tag">P2 · 评测基准</span>
+<h3>Ego4D Episodic Memory</h3>
+<p>用未来查询验证被写入的历史是否可被正确找回。</p>
+<p class="meta">Grauman et al. · CVPR 2022</p>
+</a>
+</section>
+<h2>站点约定</h2>
+<div class="card">
+<p>新增工作请在 <code>papers/&lt;paper-slug&gt;/</code> 创建独立 <code>index.html</code> 与本地 <code>figures/</code>；根页只新增导航卡片。原图优先来源为 arXiv LaTeX 源码；若没有可核验源码图，则说明原因并省略图片，不用 PDF 页面裁图替代。</p>
+</div>
+</main>
+</body>
+</html>

@@ -14,6 +14,8 @@
 
 P1 六篇精读入口：[P1 总览](https://221zhong.github.io/web-test/papers/)。
 
+P2 评测基准精读：[Ego4D Episodic Memory](https://221zhong.github.io/web-test/papers/ego4d-episodic-memory/)。
+
 ## 内容与图像原则
 
 - 每篇按“论文信息 → 核心摘要 → 研究动机 → 方法论 → 实验与结果 → 优势与局限 → 总结”组织，实验部分只使用关键数值和文字。

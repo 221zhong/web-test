@@ -1,1 +1,85 @@
-<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>MATR｜论文精读</title><link rel="stylesheet" href="../../style.css"></head><body><header><div class="wrap"><div class="eyebrow">P1 · Memory-Augmented On-TAL</div><h1>MATR：Memory-Augmented Transformer</h1><p>选择性历史队列 + 先终点、后起点的实例解码</p><nav><a href="../../index.html">← 返回导航</a><a href="../index.html">P1 总览</a></nav></div></header><main><article><p class="meta">Youngkil Song et al. · POSTECH · ECCV 2024 · <a href="https://arxiv.org/abs/2408.02957">arXiv</a> · <a href="https://skhcjh231.github.io/MATR_project/">项目页</a> · <a href="https://github.com/SKH-CJH/MATR">代码</a></p><div class="toc"><a href="#summary">摘要</a><a href="#motivation">动机</a><a href="#method">方法</a><a href="#results">实验</a><a href="#limits">优劣</a><a href="#takeaway">总结</a></div><h2 id="summary">1. 核心摘要</h2><p>MATR 面向只能看到当前 segment 的 On-TAL。它不把所有历史保留，而用 flag 预测选择值得保存的 segment 表征，形成 memory queue；当前段先判断动作是否在此结束，再去队列中寻找匹配起点。类别 query 与边界 query 分离，避免将开始和结束硬绑到同一个 decoder。THUMOS14 平均 mAP 相比此前 On-TAL 最优提高 4.9 个百分点，MUSES 提高 0.7 个百分点（Table 1）。</p><h2 id="motivation">2. 研究动机</h2><p>固定输入段越短，成本低却可能看不到动作开始；段越长则计算增加且需按数据集调参。更关键的是，当前段内可以观测到结束，却未必能回看起点。作者把时间不对称性显式化：结束从当前找，开始从有选择的历史找。</p><h2 id="method">3. 方法论</h2><object class="figure" data="figures/fig2_architecture.pdf" type="application/pdf" aria-label="MATR Figure 2 architecture"></object><p class="caption">Figure 2。作者 arXiv LaTeX 源码 <code>figures/overall_framework.pdf</code>：memory-augmented encoder 与 instance decoding。</p><h3>3.1 选择性 memory queue</h3><p>每个输入 segment 先经 segment encoder；flag token 预测它是否含对未来定位有价值的信息，仅被选中的特征入队。队列有长度上限，故不是稠密回放缓存。memory positional encoding 保留历史段的位置线索。</p><h3>3.2 解耦实例解码</h3><p>end decoder 查询当前段，给出正在结束的动作；start decoder 则从 memory queue 取样，回溯对应开始位置。两类 query 连同类别 query 由三个 head 产生 end、start、class 结果，并端到端以分类与边界损失训练。论文消融显示把 start/end 改为单 decoder，平均 mAP 从 49.5 降到 42.7。</p><h2 id="results">4. 实验与结果</h2><table><tr><th>设置</th><th>数值/结论</th><th>出处</th></tr><tr><td>THUMOS14、MUSES</td><td>对前 On-TAL SOTA 平均 mAP 分别 +4.9pp、+0.7pp</td><td>Table 1</td></tr><tr><td>THUMOS14，去 memory</td><td>46.0 平均 mAP；队列长度 7 最优</td><td>Table 3</td></tr><tr><td>短输入段</td><td>OAT-OSN 从 44.6 降至 25.8；MATR 降幅 9.1pp</td><td>Fig. 4/文中分析</td></tr></table><p>实验采用 THUMOS14（20 类）和 MUSES（25 类），前者 segment 长 64，后者 75；报告同时揭示 MUSES 的多镜头动作边界更难。</p><h2 id="limits">5. 优势与局限</h2><p><b>优势：</b>把有限历史变成可学习的选择；按可观测性分离起止定位；对 segment 长度较稳健。<br><b>局限：</b>flag 选错就无法找回被丢弃的开始；memory 容量、阈值仍需设定；动作标签/边界定义与机器人关键事件不完全相同。</p><h2 id="takeaway">6. 总结</h2><p>MATR 是 P1 中最直接可借鉴的“历史事件写入”蓝图：只存经过选择的片段，并让当前变化触发对历史的回溯。VLA 可把 end 换成子任务完成/接触变化，把 start 换成关键交互开始。</p></article></main></body></html>
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MATR｜论文精读</title>
+<link rel="stylesheet" href="../../style.css">
+</head>
+<body>
+<header>
+<div class="wrap">
+<div class="eyebrow">P1 · Memory-Augmented On-TAL</div>
+<h1>MATR：Memory-Augmented Transformer</h1>
+<p>选择性历史队列 + 先终点、后起点的实例解码</p>
+<nav>
+<a href="../../index.html">← 返回导航</a>
+<a href="../index.html">P1 总览</a>
+</nav>
+</div>
+</header>
+<main>
+<article>
+<p class="meta">Youngkil Song et al. · POSTECH · ECCV 2024 · <a href="https://arxiv.org/abs/2408.02957">arXiv</a> · <a href="https://skhcjh231.github.io/MATR_project/">项目页</a> · <a href="https://github.com/SKH-CJH/MATR">代码</a>
+</p>
+<div class="toc">
+<a href="#summary">摘要</a>
+<a href="#motivation">动机</a>
+<a href="#method">方法</a>
+<a href="#results">实验</a>
+<a href="#limits">优劣</a>
+<a href="#takeaway">总结</a>
+</div>
+<h2 id="summary">1. 核心摘要</h2>
+<p>MATR 面向只能看到当前 segment 的 On-TAL。它不把所有历史保留，而用 flag 预测选择值得保存的 segment 表征，形成 memory queue；当前段先判断动作是否在此结束，再去队列中寻找匹配起点。类别 query 与边界 query 分离，避免将开始和结束硬绑到同一个 decoder。THUMOS14 平均 mAP 相比此前 On-TAL 最优提高 4.9 个百分点，MUSES 提高 0.7 个百分点（Table 1）。</p>
+<h2 id="motivation">2. 研究动机</h2>
+<p>固定输入段越短，成本低却可能看不到动作开始；段越长则计算增加且需按数据集调参。更关键的是，当前段内可以观测到结束，却未必能回看起点。作者把时间不对称性显式化：结束从当前找，开始从有选择的历史找。</p>
+<h2 id="method">3. 方法论</h2>
+<object class="figure" data="figures/fig2_architecture.pdf" type="application/pdf" aria-label="MATR Figure 2 architecture">
+</object>
+<p class="caption">Figure 2。作者 arXiv LaTeX 源码 <code>figures/overall_framework.pdf</code>：memory-augmented encoder 与 instance decoding。</p>
+<h3>3.1 选择性 memory queue</h3>
+<p>每个输入 segment 先经 segment encoder；flag token 预测它是否含对未来定位有价值的信息，仅被选中的特征入队。队列有长度上限，故不是稠密回放缓存。memory positional encoding 保留历史段的位置线索。</p>
+<h3>3.2 解耦实例解码</h3>
+<p>end decoder 查询当前段，给出正在结束的动作；start decoder 则从 memory queue 取样，回溯对应开始位置。两类 query 连同类别 query 由三个 head 产生 end、start、class 结果，并端到端以分类与边界损失训练。论文消融显示把 start/end 改为单 decoder，平均 mAP 从 49.5 降到 42.7。</p>
+<h3>3.3 从输入到提交：一次在线迭代实际做了什么</h3>
+<p>设第 <i>t</i> 次迭代的当前段特征为 S<sub>t</sub>。它首先和已保留的 memory token 一起进入 memory-augmented video encoder；但是，当前段并不自动写入队列。flag head 先判断 S<sub>t</sub> 是否值得成为未来定位的历史，只有正例才入队，满队时由队列策略保持固定预算。因而该模块解决的是“存什么”，不是“把全部历史再注意力一次”。</p>
+<p>接着 instance decoder 以两组不同的查询工作：end query 只面向当前可见段，预测“某实例现在是否结束、结束在哪里”；若有结束候选，start query 才从 memory 中的历史段采样并估计其开始点。分类 head 同时为该实例给出类别。论文的这种先终后始顺序并非工程细节：在线时结束在当前可见、开始可能已经离开滑窗，二者的可观测域本来不对称。</p>
+<h3>3.4 训练与推理边界</h3>
+<p>训练以实例类别和起止边界监督三个 head；论文采用 focal loss 做分类，边界损失与其共同优化，所有损失系数设为 1。THUMOS14 用冻结的双流 TSN RGB/flow 特征，MUSES 用冻结的 I3D RGB 特征，故表中的改善应理解为定位/记忆设计的改善，而不是重新端到端训练视觉 backbone。推理时只读取当前 segment 与此前已入队的 token，不能回看未来帧或改写已产生的输出。</p>
+<h2 id="results">4. 实验与结果</h2>
+<table>
+<tr>
+<th>设置</th>
+<th>数值/结论</th>
+<th>出处</th>
+</tr>
+<tr>
+<td>THUMOS14、MUSES</td>
+<td>对前 On-TAL SOTA 平均 mAP 分别 +4.9pp、+0.7pp</td>
+<td>Table 1</td>
+</tr>
+<tr>
+<td>THUMOS14，去 memory</td>
+<td>46.0 平均 mAP；队列长度 7 最优</td>
+<td>Table 3</td>
+</tr>
+<tr>
+<td>短输入段</td>
+<td>OAT-OSN 从 44.6 降至 25.8；MATR 降幅 9.1pp</td>
+<td>Fig. 4/文中分析</td>
+</tr>
+</table>
+<p>实验采用 THUMOS14（20 类）和 MUSES（25 类），前者 segment 长 64，后者 75；报告同时揭示 MUSES 的多镜头动作边界更难。</p>
+<h3>4.1 怎样读这些数字</h3>
+<p>Table 1 的平均 mAP 汇总了 tIoU=0.3–0.7，不应把它等同于某一阈值下的“边界准确率”。MATR 的 +4.9pp 是与同一 THUMOS14 协议下此前在线方法的平均 mAP 差，而不是相对百分比。Table 3 中 w/o mem 的 46.0 到长度 7 的最佳结果，说明队列本身有价值；但队列继续变长不保证单调改善，选择机制和数据集的动作时长共同决定容量收益。</p>
+<h2 id="limits">5. 优势与局限</h2>
+<p>
+<b>优势：</b>把有限历史变成可学习的选择；按可观测性分离起止定位；对 segment 长度较稳健。<br>
+<b>局限：</b>flag 选错就无法找回被丢弃的开始；memory 容量、阈值仍需设定；动作标签/边界定义与机器人关键事件不完全相同。</p>
+<h2 id="takeaway">6. 总结</h2>
+<p>MATR 是 P1 中最直接可借鉴的“历史事件写入”蓝图：只存经过选择的片段，并让当前变化触发对历史的回溯。VLA 可把 end 换成子任务完成/接触变化，把 start 换成关键交互开始。</p>
+</article>
+</main>
+</body>
+</html>

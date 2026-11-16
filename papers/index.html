@@ -1,1 +1,68 @@
-<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>P1 论文精读｜VLA 历史关键事件检测</title><link rel="stylesheet" href="../style.css"></head><body><header><div class="wrap"><div class="eyebrow">P1 · Research Notes</div><h1>从边界候选到长期历史</h1><p>6 篇补充阅读：表征、在线实例定位、历史增强与事件驱动流式推理</p><nav><a href="../index.html">← 返回总站</a></nav></div></header><main><section class="lead">P1 拆解 P0 的“候选—确认—提交—维护”链条：运动表征、阶段识别、在线实例提交、选择性历史、程序性历史增强、事件级 VLM memory。方法图均来自作者 LaTeX 源码；OAT 未找到可核验原图，明确省略。</section><section class="grid"><a class="paper-card" href="motion-aware-ssl/index.html"><span class="tag">P1-1 · 表征预训练</span><h3>Motion-Aware Self-Supervision</h3><p>将可微 MotionSqueeze 放进自监督编码器，为 GEBD 提供运动敏感特征。</p><p class="meta">Rai et al. · WACV 2023</p></a><a class="paper-card" href="oadtr/index.html"><span class="tag">P1-2 · 当前阶段识别</span><h3>OadTR</h3><p>task token 读出历史，预测未来特征作为训练期辅助。</p><p class="meta">Wang et al. · ICCV 2021</p></a><a class="paper-card" href="oat/index.html"><span class="tag">P1-3 · 在线 proposal</span><h3>OAT</h3><p>多尺度 anchor 从滑动窗口直接产出可提交的动作实例。</p><p class="meta">Kim et al. · ECCV 2022</p></a><a class="paper-card" href="matr/index.html"><span class="tag">P1-4 · 选择性 memory</span><h3>MATR</h3><p>先在当前段找终点，再回溯 memory queue 寻找起点。</p><p class="meta">Song et al. · ECCV 2024</p></a><a class="paper-card" href="hat/index.html"><span class="tag">P1-5 · 程序性历史</span><h3>HAT</h3><p>以 future-supervised history module 增强短窗口 anchor。</p><p class="meta">Reza et al. · ECCV 2024</p></a><a class="paper-card" href="event-vstream/index.html"><span class="tag">P1-6 · Event VLM</span><h3>Event-VStream</h3><p>事件边界触发推理与持久记忆更新，取代固定间隔采样。</p><p class="meta">Guo et al. · arXiv 2026</p></a></section></main></body></html>
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>P1 论文精读｜VLA 历史关键事件检测</title>
+<link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header>
+<div class="wrap">
+<div class="eyebrow">P1 · Research Notes</div>
+<h1>从边界候选到长期历史</h1>
+<p>6 篇补充阅读：表征、在线实例定位、历史增强与事件驱动流式推理</p>
+<nav>
+<a href="../index.html">← 返回总站</a>
+</nav>
+</div>
+</header>
+<main>
+<section class="lead">P1 拆解 P0 的“候选—确认—提交—维护”链条：运动表征、阶段识别、在线实例提交、选择性历史、程序性历史增强、事件级 VLM memory。方法图均来自作者 LaTeX 源码；OAT 未找到可核验原图，明确省略。</section>
+<section class="grid">
+<a class="paper-card" href="motion-aware-ssl/index.html">
+<span class="tag">P1-1 · 表征预训练</span>
+<h3>Motion-Aware Self-Supervision</h3>
+<p>将可微 MotionSqueeze 放进自监督编码器，为 GEBD 提供运动敏感特征。</p>
+<p class="meta">Rai et al. · WACV 2023</p>
+</a>
+<a class="paper-card" href="oadtr/index.html">
+<span class="tag">P1-2 · 当前阶段识别</span>
+<h3>OadTR</h3>
+<p>task token 读出历史，预测未来特征作为训练期辅助。</p>
+<p class="meta">Wang et al. · ICCV 2021</p>
+</a>
+<a class="paper-card" href="oat/index.html">
+<span class="tag">P1-3 · 在线 proposal</span>
+<h3>OAT</h3>
+<p>多尺度 anchor 从滑动窗口直接产出可提交的动作实例。</p>
+<p class="meta">Kim et al. · ECCV 2022</p>
+</a>
+<a class="paper-card" href="matr/index.html">
+<span class="tag">P1-4 · 选择性 memory</span>
+<h3>MATR</h3>
+<p>先在当前段找终点，再回溯 memory queue 寻找起点。</p>
+<p class="meta">Song et al. · ECCV 2024</p>
+</a>
+<a class="paper-card" href="hat/index.html">
+<span class="tag">P1-5 · 程序性历史</span>
+<h3>HAT</h3>
+<p>以 future-supervised history module 增强短窗口 anchor。</p>
+<p class="meta">Reza et al. · ECCV 2024</p>
+</a>
+<a class="paper-card" href="event-vstream/index.html">
+<span class="tag">P1-6 · Event VLM</span>
+<h3>Event-VStream</h3>
+<p>事件边界触发推理与持久记忆更新，取代固定间隔采样。</p>
+<p class="meta">Guo et al. · arXiv 2026</p>
+</a>
+<a class="paper-card" href="ego4d-episodic-memory/index.html">
+<span class="tag">P2-1 · 记忆评测基准</span>
+<h3>Ego4D Episodic Memory</h3>
+<p>用语言、物体图像和高层活动三类查询，检验历史视频是否真正可检索。</p>
+<p class="meta">Grauman et al. · CVPR 2022</p>
+</a>
+</section>
+</main>
+</body>
+</html>

@@ -1,1 +1,63 @@
-<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>HAT｜论文精读</title><link rel="stylesheet" href="../../style.css"></head><body><header><div class="wrap"><div class="eyebrow">P1 · History-Augmented On-TAL</div><h1>HAT：History-Augmented Anchor Transformer</h1><p>以未来监督的历史模块增强短窗口 anchor</p><nav><a href="../../index.html">← 返回导航</a><a href="../index.html">P1 总览</a></nav></div></header><main><article><p class="meta">Sakib Reza et al. · Northeastern University · ECCV 2024 · <a href="https://arxiv.org/abs/2408.06437">arXiv</a> · <a href="https://www.ecva.net/papers/eccv_2024/papers_ECCV/papers/03153.pdf">论文</a> · <a href="https://github.com/sakibreza/ECCV24-HAT">代码</a></p><div class="toc"><a href="#summary">摘要</a><a href="#motivation">动机</a><a href="#method">方法</a><a href="#results">实验</a><a href="#limits">优劣</a><a href="#takeaway">总结</a></div><h2 id="summary">1. 核心摘要</h2><p>HAT 针对 OAT 的短窗口 anchor 缺少长程过程线索的问题，加入历史增强模块：先从历史特征中提炼与当前动作有关的上下文，再以 action anticipation 对历史表示施加“未来监督”，最后将 refined history 与当前 anchor 融合。它在 EGTEA、EPIC 等程序性第一视角（PREGO）数据上显著优于比较方法，在 THUMOS/MUSES 上可比或略优，说明历史在有步骤依赖的任务中尤其关键。</p><h2 id="motivation">2. 研究动机</h2><p>“切番茄”当前窗口可能很像其他切割动作，但此前取刀、放置食材等历史能消除歧义。只把很长历史直接注意力汇入当前，既易稀释相关片段，也没有明确训练信号告诉模型哪些历史会服务未来。HAT 因而把历史作为可提炼、可被未来动作监督的表示。</p><h2 id="method">3. 方法论</h2><object class="figure" data="figures/fig2_architecture.pdf" type="application/pdf" aria-label="HAT Figure 2 architecture"></object><p class="caption">Figure 2。作者 arXiv LaTeX 源码 <code>Figures/model.pdf</code>：HAT 的 history module 与 anchor transformer。</p><h3>3.1 当前 anchor 与历史分工</h3><p>短窗口经 encoder/decoder 产生不同时间尺度的 anchor 特征，负责当前局部定位。历史模块并行处理此前视频表征，将其压缩成可与 anchor 融合的 contextual feature；这不是替代局部窗口，而是补足过程先验。</p><h3>3.2 Future-Supervised History Module</h3><p>论文在历史支路接 action anticipation head，利用未来动作的训练标签来塑造历史表示；随后 Future-Driven History Refinement 选择、融合更相关的历史信息。训练期的 future supervision 在推理期不读取未来，因此在线约束仍成立。输出仍经分类/定位 head 与在线抑制流程产生 proposal。</p><h2 id="results">4. 实验与结果</h2><p>原文 Table 1 在 EGTEA、EPIC（PREGO）报告各 tIoU 下 mAP，Table 2 在 THUMOS、MUSES 报告非 PREGO 对比；结论是 PREGO 显著优于既有 On-TAL，非 PREGO 保持可比或略优。Table 3 逐步去除 future-supervised history、anticipation head、refinement，验证历史模块各部件；Table 7 还报告 HAT 相对 OAT 的 Average Early Detected Time。论文没有把单一汇总数当作跨数据集结论，因此本页不把不同协议的 mAP 混为一个排名。</p><h2 id="limits">5. 优势与局限</h2><p><b>优势：</b>历史显式服务当前 anchor；训练目标令“可用于未来”的历史更有辨识性；特别贴近程序性第一视角任务。<br><b>局限：</b>历史长度与融合方式仍是超参数；future supervision 依赖动作标注；长期历史如何压缩、错误如何遗忘仍未由在线写入预算直接回答。</p><h2 id="takeaway">6. 总结</h2><p>HAT 把“过去”从被动缓存变为由未来任务塑形的状态。对 VLA，适合把后续子任务、状态转移或成功条件当作训练期监督，让记忆选择偏向真正能帮助下一步控制的历史事件。</p></article></main></body></html>
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>HAT｜论文精读</title>
+<link rel="stylesheet" href="../../style.css">
+</head>
+<body>
+<header>
+<div class="wrap">
+<div class="eyebrow">P1 · History-Augmented On-TAL</div>
+<h1>HAT：History-Augmented Anchor Transformer</h1>
+<p>以未来监督的历史模块增强短窗口 anchor</p>
+<nav>
+<a href="../../index.html">← 返回导航</a>
+<a href="../index.html">P1 总览</a>
+</nav>
+</div>
+</header>
+<main>
+<article>
+<p class="meta">Sakib Reza et al. · Northeastern University · ECCV 2024 · <a href="https://arxiv.org/abs/2408.06437">arXiv</a> · <a href="https://www.ecva.net/papers/eccv_2024/papers_ECCV/papers/03153.pdf">论文</a> · <a href="https://github.com/sakibreza/ECCV24-HAT">代码</a>
+</p>
+<div class="toc">
+<a href="#summary">摘要</a>
+<a href="#motivation">动机</a>
+<a href="#method">方法</a>
+<a href="#results">实验</a>
+<a href="#limits">优劣</a>
+<a href="#takeaway">总结</a>
+</div>
+<h2 id="summary">1. 核心摘要</h2>
+<p>HAT 针对 OAT 的短窗口 anchor 缺少长程过程线索的问题，加入历史增强模块：先从历史特征中提炼与当前动作有关的上下文，再以 action anticipation 对历史表示施加“未来监督”，最后将 refined history 与当前 anchor 融合。它在 EGTEA、EPIC 等程序性第一视角（PREGO）数据上显著优于比较方法，在 THUMOS/MUSES 上可比或略优，说明历史在有步骤依赖的任务中尤其关键。</p>
+<h2 id="motivation">2. 研究动机</h2>
+<p>“切番茄”当前窗口可能很像其他切割动作，但此前取刀、放置食材等历史能消除歧义。只把很长历史直接注意力汇入当前，既易稀释相关片段，也没有明确训练信号告诉模型哪些历史会服务未来。HAT 因而把历史作为可提炼、可被未来动作监督的表示。</p>
+<h2 id="method">3. 方法论</h2>
+<object class="figure" data="figures/fig2_architecture.pdf" type="application/pdf" aria-label="HAT Figure 2 architecture">
+</object>
+<p class="caption">Figure 2。作者 arXiv LaTeX 源码 <code>Figures/model.pdf</code>：HAT 的 history module 与 anchor transformer。</p>
+<h3>3.1 当前 anchor 与历史分工</h3>
+<p>短窗口经 encoder/decoder 产生不同时间尺度的 anchor 特征，负责当前局部定位。历史模块并行处理此前视频表征，将其压缩成可与 anchor 融合的 contextual feature；这不是替代局部窗口，而是补足过程先验。</p>
+<h3>3.2 Future-Supervised History Module</h3>
+<p>论文在历史支路接 action anticipation head，利用未来动作的训练标签来塑造历史表示；随后 Future-Driven History Refinement 选择、融合更相关的历史信息。训练期的 future supervision 在推理期不读取未来，因此在线约束仍成立。输出仍经分类/定位 head 与在线抑制流程产生 proposal。</p>
+<h3>3.3 历史如何进入 anchor</h3>
+<p>HAT 保留 OAT 的短期分支：当前窗口先经 transformer encoder 得到 temporal contextual feature，decoder 的 learnable anchor token 从中得到各尺度 anchor feature。新增的 history branch 处理更早的特征，并非把历史帧简单拼到滑窗末尾。它先由 Future-Supervised History Module 生成历史表示，再由 Future-Driven History Refinement 提炼与当前任务有关的部分，最后和当前 anchor 特征融合，送往分类与定位头。</p>
+<p>这里的“future”只在训练目标中出现：anticipation head 要求历史表示对随后动作有预测力。部署时模型没有访问未来视频，而是使用已训练好的 history module。这个差异应写清，否则很容易把训练期的监督误认为线上数据泄漏。</p>
+<h3>3.4 为什么 PREGO 更能检验它</h3>
+<p>EGTEA、EPIC 的程序性第一视角活动有强步骤关联：当前切、洗、放置常需结合先前拿取工具或准备食材才能消歧。相比之下，THUMOS/MUSES 的动作片段更常能由局部运动识别。作者因而把 PREGO 与非 PREGO 分开表格报告；这不是把四个数据集混成一个平均值，而是在检验“历史是否真有用”的条件差异。</p>
+<h2 id="results">4. 实验与结果</h2>
+<p>原文 Table 1 在 EGTEA、EPIC（PREGO）报告各 tIoU 下 mAP，Table 2 在 THUMOS、MUSES 报告非 PREGO 对比；结论是 PREGO 显著优于既有 On-TAL，非 PREGO 保持可比或略优。Table 3 逐步去除 future-supervised history、anticipation head、refinement，验证历史模块各部件；Table 7 还报告 HAT 相对 OAT 的 Average Early Detected Time。论文没有把单一汇总数当作跨数据集结论，因此本页不把不同协议的 mAP 混为一个排名。</p>
+<h3>4.1 实验应回答的两个问题</h3>
+<p>Table 3 是机制因果证据：只加历史、再加 anticipation、再加 refinement 的分步比较用于判断改善来自哪里。Table 7 则检验部署层面的时效性。若仅引用某个最高 mAP，会遗漏作者最重要的限定——历史模块的优势在程序性第一视角任务更明显；这也是它对长程机器人操作更有参考价值、但不能直接保证在所有第三视角数据上大幅领先的原因。</p>
+<h2 id="limits">5. 优势与局限</h2>
+<p>
+<b>优势：</b>历史显式服务当前 anchor；训练目标令“可用于未来”的历史更有辨识性；特别贴近程序性第一视角任务。<br>
+<b>局限：</b>历史长度与融合方式仍是超参数；future supervision 依赖动作标注；长期历史如何压缩、错误如何遗忘仍未由在线写入预算直接回答。</p>
+<h2 id="takeaway">6. 总结</h2>
+<p>HAT 把“过去”从被动缓存变为由未来任务塑形的状态。对 VLA，适合把后续子任务、状态转移或成功条件当作训练期监督，让记忆选择偏向真正能帮助下一步控制的历史事件。</p>
+</article>
+</main>
+</body>
+</html>

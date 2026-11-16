@@ -1,1 +1,85 @@
-<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>OadTR｜论文精读</title><link rel="stylesheet" href="../../style.css"></head><body><header><div class="wrap"><div class="eyebrow">P1 · Online Action Detection</div><h1>OadTR：Online Action Detection With Transformers</h1><p>用历史 self-attention 和未来表征预测识别当前动作</p><nav><a href="../../index.html">← 返回导航</a><a href="../index.html">P1 总览</a></nav></div></header><main><article><p class="meta">Xiang Wang et al. · HUST / Alibaba · ICCV 2021 · <a href="https://openaccess.thecvf.com/content/ICCV2021/html/Wang_OadTR_Online_Action_Detection_With_Transformers_ICCV_2021_paper.html">论文</a> · <a href="https://arxiv.org/abs/2106.11149">arXiv</a> · <a href="https://github.com/wangxiang1230/OadTR">代码</a></p><div class="toc"><a href="#summary">摘要</a><a href="#motivation">动机</a><a href="#method">方法</a><a href="#results">实验</a><a href="#limits">优劣</a><a href="#takeaway">总结</a></div><h2 id="summary">1. 核心摘要</h2><p>OAD 要在第 t 个片段到来时立即分类，不能看真实未来。此前常用 RNN 累积历史，但串行计算和梯度衰减限制了长程依赖。OadTR 以 Transformer encoder 编码历史序列，并增加 task token 汇聚用于当前分类的信息；decoder 则训练为预测未来片段表征，作为辅助上下文。THUMOS14 上，相同 TSN-Anet 特征下 mAP 由 50.0 提至 58.3，增幅 8.3 个百分点（Table 3）。</p><h2 id="motivation">2. 研究动机</h2><p>“当前看到什么”常不足以判定动作阶段，历史关系很关键；但在线协议禁止使用真的未来帧。作者把未来信息转为训练期的预测目标：部署时只输入历史，模型仍因训练而学会对接下来状态形成有用表征。这不是未来帧泄漏，而是 future-representation anticipation。</p><h2 id="method">3. 方法论</h2><object class="figure" data="figures/fig2_architecture.pdf" type="application/pdf" aria-label="OadTR Figure 2 architecture"></object><p class="caption">Figure 2。作者 LaTeX 源码 <code>pictures/Networks+decoder.pdf</code>，含 encoder、task token 与未来预测 decoder。</p><h3>3.1 历史编码与 task token</h3><p>将最近历史 clip 特征与位置编码输入 encoder；可学习 task token 与所有历史特征自注意力交互，其输出送入当前动作分类器。token 是一个明确的“读出槽位”，避免只拿某个历史帧作为分类表示。</p><h3>3.2 未来辅助 decoder</h3><p>decoder 用 encoder 表示和查询生成未来多个 clip 的表征预测；训练时以真实未来特征监督，并与当前分类损失联合优化。推理不读取未来，故仍满足 OAD 因果性。论文将 N=3、M=5 用于跨数据集比较。</p><h2 id="results">4. 实验与结果</h2><table><tr><th>数据集/条件</th><th>指标</th><th>结果</th></tr><tr><td>HDD</td><td>mAP</td><td>29.8，对比前最佳 29.2（Table 5）</td></tr><tr><td>THUMOS14，TSN-Anet</td><td>mAP</td><td>58.3，对比 50.0（+8.3pp，Table 3）</td></tr><tr><td>THUMOS14，TSN-Kinetics</td><td>mAP</td><td>65.2，对比 60.3（+4.9pp，Table 3）</td></tr></table><p>消融显示 task token 与 decoder 组合在 HDD、TVSeries、THUMOS14 都优于仅 encoder；作者报告相对该基线分别提升 1.1、0.6、2.5 个百分点。</p><h2 id="limits">5. 优势与局限</h2><p><b>优势：</b>纯 Transformer 可并行训练；用预测未来表征加强当前判断但不破坏线上因果性。<br><b>局限：</b>输出是帧/片段类别，不直接给动作实例的起止与提交时刻；历史长度仍固定，长期 memory 也未压缩。</p><h2 id="takeaway">6. 总结</h2><p>OadTR 的可迁移思想是：用训练期可见的未来构造辅助目标，而在部署期只消费历史。用于 VLA 时可改为预测下一阶段、接触或任务状态，并让预测误差提示“此刻是否值得存为关键事件”。</p></article></main></body></html>
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>OadTR｜论文精读</title>
+<link rel="stylesheet" href="../../style.css">
+</head>
+<body>
+<header>
+<div class="wrap">
+<div class="eyebrow">P1 · Online Action Detection</div>
+<h1>OadTR：Online Action Detection With Transformers</h1>
+<p>用历史 self-attention 和未来表征预测识别当前动作</p>
+<nav>
+<a href="../../index.html">← 返回导航</a>
+<a href="../index.html">P1 总览</a>
+</nav>
+</div>
+</header>
+<main>
+<article>
+<p class="meta">Xiang Wang et al. · HUST / Alibaba · ICCV 2021 · <a href="https://openaccess.thecvf.com/content/ICCV2021/html/Wang_OadTR_Online_Action_Detection_With_Transformers_ICCV_2021_paper.html">论文</a> · <a href="https://arxiv.org/abs/2106.11149">arXiv</a> · <a href="https://github.com/wangxiang1230/OadTR">代码</a>
+</p>
+<div class="toc">
+<a href="#summary">摘要</a>
+<a href="#motivation">动机</a>
+<a href="#method">方法</a>
+<a href="#results">实验</a>
+<a href="#limits">优劣</a>
+<a href="#takeaway">总结</a>
+</div>
+<h2 id="summary">1. 核心摘要</h2>
+<p>OAD 要在第 t 个片段到来时立即分类，不能看真实未来。此前常用 RNN 累积历史，但串行计算和梯度衰减限制了长程依赖。OadTR 以 Transformer encoder 编码历史序列，并增加 task token 汇聚用于当前分类的信息；decoder 则训练为预测未来片段表征，作为辅助上下文。THUMOS14 上，相同 TSN-Anet 特征下 mAP 由 50.0 提至 58.3，增幅 8.3 个百分点（Table 3）。</p>
+<h2 id="motivation">2. 研究动机</h2>
+<p>“当前看到什么”常不足以判定动作阶段，历史关系很关键；但在线协议禁止使用真的未来帧。作者把未来信息转为训练期的预测目标：部署时只输入历史，模型仍因训练而学会对接下来状态形成有用表征。这不是未来帧泄漏，而是 future-representation anticipation。</p>
+<h2 id="method">3. 方法论</h2>
+<object class="figure" data="figures/fig2_architecture.pdf" type="application/pdf" aria-label="OadTR Figure 2 architecture">
+</object>
+<p class="caption">Figure 2。作者 LaTeX 源码 <code>pictures/Networks+decoder.pdf</code>，含 encoder、task token 与未来预测 decoder。</p>
+<h3>3.1 历史编码与 task token</h3>
+<p>将最近历史 clip 特征与位置编码输入 encoder；可学习 task token 与所有历史特征自注意力交互，其输出送入当前动作分类器。token 是一个明确的“读出槽位”，避免只拿某个历史帧作为分类表示。</p>
+<h3>3.2 未来辅助 decoder</h3>
+<p>decoder 用 encoder 表示和查询生成未来多个 clip 的表征预测；训练时以真实未来特征监督，并与当前分类损失联合优化。推理不读取未来，故仍满足 OAD 因果性。论文将 N=3、M=5 用于跨数据集比较。</p>
+<h3>3.3 信息流与两个 token 的职责</h3>
+<p>输入不是完整视频，而是当前时刻之前的 clip 特征序列。加位置编码后，encoder 对历史做全局 self-attention；task token 与这些历史 token 同列参与注意力，其最终状态是当前分类的唯一读出。这样，分类器不必猜测“最后一个输入帧是否恰好最重要”。decoder 则以学习到的未来查询从 encoder memory 解码多个未来表征；它的输出只服务训练损失，不作为测试时的外部输入。</p>
+<p>可将总目标写成 L = L<sub>cls</sub> + λL<sub>future</sub>：前项监督当前动作类别，后项使预测的未来 clip representation 接近训练样本真实后继 representation。该式的关键是监督来源的时间方向，而非在推理时偷看未来；文中没有把它表述为线上额外缓存或重规划模块。</p>
+<h3>3.4 它解决什么、没有解决什么</h3>
+<p>OadTR 解决的是当前时刻的类别判断和历史编码效率，输出粒度仍是帧/clip 的 action score。因此它可用作“当前 phase 是否改变”的语义证据，但不能单独决定一个长期记忆何时提交。若要转为实例或事件，还需在上层加入边界、proposal 或去重协议。</p>
+<h2 id="results">4. 实验与结果</h2>
+<table>
+<tr>
+<th>数据集/条件</th>
+<th>指标</th>
+<th>结果</th>
+</tr>
+<tr>
+<td>HDD</td>
+<td>mAP</td>
+<td>29.8，对比前最佳 29.2（Table 5）</td>
+</tr>
+<tr>
+<td>THUMOS14，TSN-Anet</td>
+<td>mAP</td>
+<td>58.3，对比 50.0（+8.3pp，Table 3）</td>
+</tr>
+<tr>
+<td>THUMOS14，TSN-Kinetics</td>
+<td>mAP</td>
+<td>65.2，对比 60.3（+4.9pp，Table 3）</td>
+</tr>
+</table>
+<p>消融显示 task token 与 decoder 组合在 HDD、TVSeries、THUMOS14 都优于仅 encoder；作者报告相对该基线分别提升 1.1、0.6、2.5 个百分点。</p>
+<h3>4.1 实验解读</h3>
+<p>HDD/THUMOS14 报每帧 mAP，TVSeries 报用于类别不均衡的 mcAP，不能横向比较 29.8 与 85.5 的绝对大小。Table 3 的 50.0→58.3 是同一 TSN-Anet 特征条件下的合理对照；TSN-Kinetics 的 60.3→65.2 则表明改善不依赖单一特征源。作者还报告在 THUMOS14 上 encoder-only 为 55.8、完整 OadTR 为 58.3（Table 4），支持未来辅助任务和 task token 的组合贡献。</p>
+<h2 id="limits">5. 优势与局限</h2>
+<p>
+<b>优势：</b>纯 Transformer 可并行训练；用预测未来表征加强当前判断但不破坏线上因果性。<br>
+<b>局限：</b>输出是帧/片段类别，不直接给动作实例的起止与提交时刻；历史长度仍固定，长期 memory 也未压缩。</p>
+<h2 id="takeaway">6. 总结</h2>
+<p>OadTR 的可迁移思想是：用训练期可见的未来构造辅助目标，而在部署期只消费历史。用于 VLA 时可改为预测下一阶段、接触或任务状态，并让预测误差提示“此刻是否值得存为关键事件”。</p>
+</article>
+</main>
+</body>
+</html>
