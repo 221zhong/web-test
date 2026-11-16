@@ -2,7 +2,7 @@
 
 在线入口：[主导航页](https://221zhong.github.io/web-test/)。根页只负责导航与研究路线总览；每篇精读均为独立子网页，可持续扩充。
 
-## 当前 P0 页面
+## 当前 P0 / P1 页面
 
 | 优先级 | 工作 | 在线精读页面 |
 | --- | --- | --- |
@@ -11,6 +11,8 @@
 | P0-3 | CAG-QIL | [打开网页](https://221zhong.github.io/web-test/papers/cag-qil/) |
 | P0-4 | Hierarchical Event Memory | [打开网页](https://221zhong.github.io/web-test/papers/hierarchical-event-memory/) |
 | P0-5 | KEMO | [打开网页](https://221zhong.github.io/web-test/papers/kemo/) |
+
+P1 六篇精读入口：[P1 总览](https://221zhong.github.io/web-test/papers/)。
 
 ## 内容与图像原则
 
