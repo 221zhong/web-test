@@ -49,6 +49,11 @@
 <td>KEMO</td>
 <td>以 VLA 的任务/子任务成功率检验记忆选择，而非只测边界 F1。</td>
 </tr>
+<tr>
+<td>KV cache 更新</td>
+<td>VLA-Cache、StreamMem、KEMO</td>
+<td>将事件相关性转化为 reuse、局部 refresh 与长期 commit 的缓存策略。</td>
+</tr>
 </table>
 <h2>P0 论文精读</h2>
 <section class="grid">
@@ -80,6 +85,27 @@
 <span class="tag">P0-5 · VLA 端到端验证</span>
 <h3>KEMO：Event-Driven Keyframe Memory for Long-Horizon Robot Manipulation with VLA Policies</h3>
 <p>KEMO 是五篇中最贴近 VLA 历史关键事件检测的工作。它不保存稠密轨迹，也不依赖在线任务分解：先用机器人运动学显著性提出关键帧，再以视觉去重确认，并把有序 memory token 注入 π0.5。论文在六个真实双臂任务…</p>
+<p class="meta">Zeng et al. · arXiv 2026</p>
+</a>
+</section>
+<h2>KV Cache 与事件记忆精读</h2>
+<section class="grid">
+<a class="paper-card" href="papers/vla-cache/index.html">
+<span class="tag">P0 · VLA 推理缓存</span>
+<h3>VLA-Cache：Adaptive Token Caching</h3>
+<p>以跨控制步的 token 变化决定哪些视觉计算与 KV 可直接复用，哪些必须刷新。</p>
+<p class="meta">Xu et al. · arXiv 2025</p>
+</a>
+<a class="paper-card" href="papers/streammem/index.html">
+<span class="tag">P0 · 流式 KV 记忆</span>
+<h3>StreamMem：Query-Agnostic KV Cache Memory</h3>
+<p>以固定容量 KV memory、proxy query 评分和 frame-wise merge 处理未知未来 query 的视频流。</p>
+<p class="meta">Yang et al. · arXiv 2025</p>
+</a>
+<a class="paper-card" href="papers/kemo/index.html">
+<span class="tag">P0 · 事件驱动写入</span>
+<h3>KEMO：Event-Driven Keyframe Memory</h3>
+<p>以 motion 候选与视觉确认选择关键帧，并将事件证据注入长程 VLA 控制。</p>
 <p class="meta">Zeng et al. · arXiv 2026</p>
 </a>
 </section>
