@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>VPWEM｜专题三 · 在线记忆</title>
+<link rel="stylesheet" href="../../style.css">
+</head>
+<body>
+<header>
+<div class="wrap">
+<div class="crumb"><a href="../../index.html">VLA 历史记忆</a> / <a href="../online-memory/index.html">专题三 · 在线记忆</a> / P1-3</div>
+<div class="eyebrow">Paper Deep Read · 固定预算的双层记忆：滑窗 + 递归压缩</div>
+<h1>VPWEM: Non-Markovian Visuomotor Policy with Working and Episodic Memory</h1>
+<p>Yuheng Lei, Zhixuan Liang, Hongyuan Zhang, Ping Luo · 香港大学计算与数据科学学院 · IEEE RA-L（2026 年 7 月录用）｜<a href="https://arxiv.org/abs/2603.04910">arXiv:2603.04910</a> · <a href="https://github.com/HarryLui98/code_vpwem">代码</a></p>
+</div>
+</header>
+<main>
+<div class="doc-layout">
+<aside class="doc-side">
+<nav class="sidenav">
+<h4>本页目录</h4>
+<a href="#summary">1 核心摘要</a>
+<a href="#stage">2 记忆环节定位</a>
+<a href="#problem">3 问题与动机</a>
+<a href="#method">4 方法拆解</a>
+<a href="#evidence">5 证据与实验</a>
+<a href="#fit">6 优点、局限与 VLA 适配</a>
+<a href="#repro">7 落地清单</a>
+<div class="side-extra">「窗口内保留、窗口外压缩」的固定预算方案：2 个工作记忆帧 + 2 个情景 token，就能把 MIKASA 两个记忆任务的平均成功率从 66% 拉到 86.5%。</div>
+</nav>
+</aside>
+<article>
+<div class="verdict">
+<div class="vt">决策卡</div>
+<p>能拿到一套每步成本近似常数的在线记忆：多 2.24M 参数、显存 +78MB、推理 +0.05 s，换 MIKASA 两任务平均 86.5%。代价是压缩不可逆——被压掉的帧再也取不回来，而且压缩器只受行为克隆损失约束，没有「保真」这项要求。</p>
+<dl>
+<dt>最小可复用件</dt><dd><code>M=2</code> 个可学习 query、<code>N=2</code> 层的 attention compressor，每层挂一条 detach 的 summary cache，外加 FIFO 观测 cache（<code>S=8</code>）；输出 2 个 episodic token，与滑窗 <code>L=2</code> 的 working token 一起作为扩散去噪网络的 cross-attention 条件。</dd>
+<dt>主要风险</dt><dd>压缩不可逆导致证据丢失（缓存满即 FIFO 丢弃，且摘要 embedding 已被覆写）；压缩器只在 BC 损失下端到端训练，可能编码「对动作有用但与任务无关」的伪相关；固定 2+2 token 在超长任务上必然饱和，且饱和点无法从训练损失看出来。</dd>
+<dt>复现门槛</dt><dd>CleanDiffuser 代码库 + 单张 RTX 4090；MIKASA / MoMaRT / Robomimic 仿真各 3 个随机种子；真机需 AgileX Cobot Magic 平台、180 条示教、1e6 梯度步。</dd>
+</dl>
+</div>
+
+<h2 id="summary">1. 核心摘要</h2>
+<p>非马尔可夫操作任务要求策略记住「已经看不见但仍在起作用」的东西：杯子被盖住前的球位、方块被搬走前的颜色、本 episode 开头自己在哪一侧。现有做法两头为难：单帧或 2–10 帧的固定窗口直接丢历史；把窗口拉长则自注意力成本按 <code>O(L²)</code> 涨，而且长历史里的 nuisance 相关会诱发因果混淆与 copycat，训练误差降、分布外崩。VPWEM 的解法是把历史拆成两层——<b>工作记忆</b>保留最近 <code>L=2</code> 帧的观测 embedding（FIFO 滑窗），<b>情景记忆</b>由一个 Transformer 压缩器把滑出窗口的帧递归压成固定 <code>M=2</code> 个 token；压缩器每层自带一条 summary cache，用可学习 query 先对「过去各步的 query embedding」做 self-attention，再对观测 cache 做 cross-attention，输出经 MLP 投影成 episodic embedding，与工作记忆一起条件化扩散去噪网络。</p>
+<p>关键在于预算被钉死：观测 cache 上限 <code>S=8</code>、query 数 <code>M=2</code>、层数 <code>N=2</code>，因此每步的 attention 规模与 episode 长度无关，训练时也不需要沿时间反传（cache 入库前 detach）。在 MIKASA 的两个记忆任务上，DP-VPWEM 取得 ShellGameTouch 91%、RememberColor3 82%（两任务均值 86.5%），RememberColor3 上一次优基线 OpenVLA 只有 59%；MoMaRT 五个长时程移动操作任务的平均列为 69%（DP 50%、MaIL 66%）。真机上把胶带放回原盘，成功率从 DP 的 37% 提到 67%，单次 action chunk 延迟 72 ms → 79 ms。</p>
+<p>判定：这是目前把「固定预算的持续在线状态」做得最干净的一篇——它不检索、不选帧、不调用 VLM，只用一个 2.24M 参数的压缩器维持 2 个 token 的 episode 摘要；代价是摘要只能整体覆盖、不能回溯，且摘要质量没有任何显式监督。适合作为「我的策略需要一个常数成本的长程状态」时的第一版实现。</p>
+
+<h2 id="stage">2. 记忆环节定位</h2>
+<div class="flowline">
+<span class="part">写入触发</span><span class="on">记忆表征</span><span>索引与检索</span><span class="part">动作接口</span><span class="on">长期维护</span><span>评测</span>
+</div>
+<p>主命中<b>记忆表征</b>与<b>长期维护</b>。表征这一格是彻底的：记忆被写成两组定长向量（2 帧 working + 2 个 episodic token），不是原始帧、不是关键帧下标、也不是文本摘要，因此下游只能消费向量，无法回查证据。长期维护这一格靠硬预算实现：观测 cache 上限 8、摘要 token 固定 2 个、淘汰规则 FIFO，任何长度的 episode 都占同样显存与算力。写入触发只标部分命中——写入门槛为零，帧一滑出窗口就进 cache，没有「是否值得记」的判断，唯一的取舍发生在淘汰端。</p>
+<table>
+<tr><th>环节</th><th>内容</th></tr>
+<tr><td>输入</td><td>每步 <code>Nc</code> 路多视角 RGBD + 本体感知；单帧经各自图像编码器得 <code>oI,t ∈ R^DI</code>、本体得 <code>oP,t ∈ R^DP</code>，拼接后过 MLP 得 <code>ot ∈ R^D</code>（<code>D=256</code>），并记帧在 episode 内的时间步 <code>τ</code></td></tr>
+<tr><td>记忆单位</td><td>工作记忆 = 最近 <code>L=2</code> 个 <code>ot</code>（即 2 帧）；情景记忆 = <code>M=2</code> 个 <code>D=256</code> 的摘要 token，每步整体重算一次，不是逐帧存档</td></tr>
+<tr><td>写入频率</td><td>每帧。滑窗内的帧直接可用；出窗帧加位置编码 <code>fτ = oτ + PE(τ)</code> 后写入观测 cache（FIFO，上限 <code>S=8</code>）；压缩器的 summary cache 每步更新一次（存本层 query embedding，上限同为 <code>S</code>）</td></tr>
+<tr><td>读取条件</td><td>无条件。每步都读全部记忆，不做相似度匹配、不做 top-k、不做任务相关性筛选——「检索」这一格为空是设计选择，不是遗漏</td></tr>
+<tr><td>交给下游</td><td>2 帧 working embedding 与 2 个 episodic embedding 一起作为扩散去噪网络（Transformer decoder）的 cross-attention 条件，预测 <code>H=8</code> 步 action chunk</td></tr>
+<tr><td>在线性</td><td>因果：只用 <code>o≤t</code>，不用未来帧；用本体感知但非 oracle 状态；容量有硬上限（<code>S=8, M=2</code>）；遗忘策略是 FIFO 淘汰（消融中 K-Means、AdjSim 与之相当，Random 明显更差）</td></tr>
+</table>
+
+<h2 id="problem">3. 问题与动机</h2>
+<p>论文把「历史变长」的代价拆成两条，各自有可量化的失败模式。</p>
+<p><b>第一条是成本。</b>自注意力对历史长度是平方级。Table II 把这条曲线量出来了：同一套 DP-PTP，上下文从 4 帧加到 128 帧，模型只从 50.67M 涨到 50.73M，但显存 656 MB → 1792 MB、训练 0.02 → 0.18 s/step、推理 0.17 → 0.72 s；而成功率并没有跟着涨——46.1 / 45.0 / 49.1 / 49.6 / 49.6 / 40.4，到 128 帧反而掉到 40.4。也就是说，单纯加长上下文既买不到性能，也过不了实时性。</p>
+<p><b>第二条是统计。</b>不加选择地条件化长历史会引入 nuisance 相关，作者引用 causal confusion 与 copycat 两条线索说明：策略可能靠「上一动作」或某个共现的视觉线索把训练误差压低，一旦分布漂移就整体失效。这也是为什么「把窗口开到 128 帧」的做法在 Table II 里先平后降——多出来的帧给的是捷径，不是证据。</p>
+<p>既有替代路线各有短板。RNN/SSM 类（Robomimic 的 LSTM 基线、MaIL 的 Mamba 去噪网络）把全部历史压进一个定维隐状态，容量与遗忘都不可控；论文顺手给了个反例：把 MaIL 的 Mamba 隐维从 16 加到 64，Long-Horizon Square 上成功率先从 42% 升到 47%，再跌到 34%，说明「加参数」不等于「加记忆」。逐 token 自回归的做法（把观测与动作 token 交错喂进 Transformer）能吃到长上下文，但推理随序列线性变慢，且强依赖 action tokenizer 的设计。VLA 侧的记忆路线则是另一类：MemoryVLA 做决策相关的记忆条目检索与融合，BPP 用现成 VLM 挑关键历史帧，MemER 微调高层 VLM 选帧并生成文本子目标，ContextVLA 对多帧 VLM 特征做平均池化，CronusVLA 用后训练把单帧 VLA 扩到多帧。它们共同的隐含前提是「记忆要靠一个大模型来读写」——BPP 与 MemER 里的 Qwen3-VL 2B 每次查询约 0.9 s，作者据此指出这条路的延迟代价远高于一个 2.24M 参数的压缩器。</p>
+<table>
+<tr><th>维度</th><th>DP / DP-PTP（固定窗口）</th><th>MaIL（Mamba 去噪）</th><th>VPWEM</th></tr>
+<tr><td>历史如何进入</td><td><code>L</code> 帧连续观测直接拼进条件</td><td>经 SSM 隐状态递归传递</td><td>窗口内 2 帧直读；窗口外经压缩器压成 2 个 token</td></tr>
+<tr><td>历史长度上限</td><td>硬上限 <code>L</code>，超出即丢</td><td>理论无限，实际受隐状态容量限制</td><td>全长可覆盖，但在 cache <code>S=8</code> 之外只留摘要</td></tr>
+<tr><td>每步成本随长度</td><td><code>O(L²)</code></td><td><code>O(1)</code>（但隐状态定维）</td><td><code>O(1)</code>（<code>M·S</code> 固定）</td></tr>
+<tr><td>能否回查具体帧</td><td>能（窗口内）</td><td>不能</td><td>只能回查最近 8 帧；更早的已在摘要里</td></tr>
+</table>
+
+<h2 id="method">4. 方法拆解</h2>
+<img class="figure" src="figures/fig1_overview.png" alt="VPWEM 总体结构：(a) 策略架构，多模态编码器输出单帧 embedding，滑窗内的帧进入 working memory，出窗帧进入观测 cache 并经上下文记忆压缩器（self-attention 读 summary cache、cross-attention 读观测 cache）压成 episodic embedding，两类记忆一起条件化扩散去噪网络；(b) 训练时从完整历史中按固定比例分段随机抽样后压缩；(c) 推理时每步先更新 cache、再压缩出窗 embedding、再预测 action chunk">
+<p class="caption">Figure 2：架构 (a)、训练 (b)、推理 (c) 三段。绿色模块为可学习部分（多模态编码器、压缩器、summary embedding、噪声预测器），整体用行为克隆损失端到端优化。原图：作者 LaTeX 源码 <code>figure/framework.pdf</code> 以 300 dpi 渲染，对应原文第 4 页 Figure 2。</p>
+
+<h3>4.1 观测编码与工作记忆</h3>
+<p>每步把 <code>Nc</code> 路相机的 RGBD 分别送进各自图像编码器，得视觉特征 <code>oI,t ∈ R^DI</code>；本体感知单独编码成 <code>oP,t ∈ R^DP</code>。两者拼接后过一个 MLP，得到融合的单帧表示 <code>ot ∈ R^D</code>，<code>D=256</code>。工作记忆就是这串表示上的一个 FIFO 滑窗：</p>
+<p><code>wt ≜ ot−L:t = concat(ot−L+1, …, ot−1, ot) ∈ R^(L×D)，L = 2</code></p>
+<p>注意 <code>L=2</code> 真的很短——它对应基线里的 DP(2)。这一点比任何消融都重要：VPWEM 在 ShellGameTouch 上的 91% 是<b>在只有 2 帧工作记忆</b>的条件下拿到的，而 DP(2) 只有 11%。所以增益不来自「看得更长的窗口」，只能来自窗口之外那 2 个 episodic token。</p>
+
+<h3>4.2 情景记忆：递归压缩而不是检索</h3>
+<p>帧一滑出窗口，先补时间信息 <code>fτ = oτ + PE(τ)</code>（<code>τ</code> 是帧在 episode 内的步号），再推进观测 cache：<code>Cf ← M(Cf ∪ fτ)</code>，<code>M</code> 是带最大长度 <code>S</code> 的淘汰操作，主实验取 FIFO，<code>S=8</code>。</p>
+<p>压缩器是标准 Transformer encoder 堆叠（<code>N=2</code> 层），每层包含三件事：对 past summary 的 self-attention、对观测 cache 的 cross-attention、以及 FFN；每次子模块前后都有 LayerNorm 与残差。每个 block 处理 <code>M=2</code> 个 query，第一层的 query 是<b>可学习参数</b> <code>q</code>：</p>
+<p><code>q1,τ = q</code><br>
+<code>x1,n = qn,τ + attn(qn,τ·Qs, C̄q,n·Ks, C̄q,n·Vs)</code><br>
+<code>x2,n = x1,n + attn(x1,n·Qc, C̄f·Kc, C̄f·Vc)</code><br>
+<code>qn+1,τ = x2,n + MLP(x2,n)</code><br>
+<code>eτ = MLP(qN,τ)</code></p>
+<p>其中 <code>C̄f = concat(Cf) ∈ R^(S×D)</code> 是观测 cache，<code>C̄q,n = concat(Cq,n) ∈ R^(S×M×D)</code> 是第 <code>n</code> 层专属的 summary cache，每步按 <code>Cq,n ← M(Cq,n ∪ qn,τ)</code> 追加。也就是说：<b>递归机制不是 GRU，而是「可学习 query + 每层一条历史 query 缓存」的迭代式 attention pooling</b>——没有门控、没有标量隐状态，历史以「过去每步每个 token 的 query embedding」形式保留，下一步的 query 先在这些摘要上做注意力、再到观测 cache 里取细节。</p>
+<p>这个设计有三处工程含义。其一，递归只发生在 query 空间，观测只保留最近 <code>S</code> 帧，因此 <code>S</code> 是「细节回看窗口」，<code>M</code> 是「长期摘要带宽」，两者解耦。其二，<code>fτ</code> 与 <code>qn,τ</code> 在入 cache 前被 detach，梯度不沿时间反传，历史信息<b>只能靠 summary embedding 传递</b>——这既是显存优化，也是防捷径的机制（压缩器无法用梯度把答案偷偷塞进缓存）。其三，因为 query 数固定为 2、cache 上限固定为 8，每步注意力的规模是常数，与 episode 已跑多久无关。</p>
+
+<h3>4.3 训练：三个防捷径的开关</h3>
+<p>训练样本是 <code>(o≤t, at:t+H)</code>，即从 episode 起点到 <code>t</code> 的完整历史，因此输入长度逐样本不同。工程上有三步处理：先按样本在 episode 内的位置排序并按长度分桶，使同一 mini-batch 长度可比；仍不齐时用该 episode 的首帧左填充；再把轨迹切成固定比例的分段，<b>每段随机抽一帧</b>作为压缩器输入（subsample ratio：MIKASA 取 5，其余取 20）。随机抽样是防捷径的第一道开关：压缩器看到的不是连续帧，而是覆盖全历史、但位置每轮都变的稀疏样本，无法拟合「固定帧间隔 → 固定动作」的模板。</p>
+<p>第二道开关是上文的 detach：缓存不参与反传，压缩器不能通过缓存「记住」训练标签。第三道是 Table I 里的 <b>memory embedding dropout = 0.3</b>：训练时以一定概率丢掉记忆 token，迫使策略在记忆缺失时仍能动作——这既降低对记忆的过拟合，也让记忆必须携带「不可由当前 2 帧推出」的信息才有价值。</p>
+<p>监督信号只有一个，即扩散噪声预测损失：</p>
+<p><code>L = E(o,a0),ε ‖ ε − εθ(√ᾱk·a0 + √(1−ᾱk)·ε, wt, eτ, k) ‖²</code></p>
+<p>噪声预测器沿用 DP 的 Transformer decoder 与 cross-attention 掩码，条件里同时有 <code>wt</code> 与 <code>eτ</code>。<b>压缩器没有任何重建、对比或预测辅助损失</b>，它的「该记什么」完全由行为克隆间接决定；作者把 reconstruction 一类辅助目标列进 future work。工程实现上沿用 DP-PTP 的多阶段训练：先用短上下文策略训视觉编码器，再冻结它训练长上下文部分。这一点很关键——如果编码器也在变，压缩器学到的摘要会随表征漂移而失效。</p>
+
+<h3>4.4 推理：每步都压，但压的是常数</h3>
+<p>每个决策步三件事：<b>（1）</b>编码新帧、更新观测 cache 与各层 summary cache；<b>（2）</b>把刚出窗的 embedding 过一遍压缩器，得到本步的 2 个 episodic token；<b>（3）</b>以 <code>wt</code> 与 <code>eτ</code> 为条件，跑 <code>K=50</code> 步 DDPM 去噪，输出 <code>H=8</code> 的 action chunk。</p>
+<p>「每步是否都要压」的答案是<b>是</b>：summary cache 每步都被当前 query 更新，episodic token 是「到此刻为止的摘要」，不是「上次压缩后的缓存」。但成本是常数——压缩器前向只有 2 层、2 个 query、8 个 key，相对 50 步去噪可以忽略。Table II 的直接对照说明了这点：DP-VPWEM 在 <code>S=8</code> 下模型 52.98M（DP-PTP 50.67M）、显存 734 MB（DP-PTP 上下文 4 帧为 656 MB）、训练 0.09 s/step、推理 0.22 s，而成功率为 58.3% vs 46.1%（unload-suboptimal）。换句话说，它的成本与「4 帧上下文」处在同一量级，成绩却高于 128 帧上下文。</p>
+<p>在线边界要说清楚：策略是因果的，只吃 <code>o≤t</code>；本体感知来自机器人自身，不是仿真 oracle 状态；历史有硬上限，超出的部分只有摘要；没有任何跨 episode 的持久记忆，episode 结束即清空。</p>
+
+<h2 id="evidence">5. 证据与实验</h2>
+<p>三套仿真 + 一台真机，全部用 CleanDiffuser 实现，单张 RTX 4090，三个随机种子（100/200/300），报均值与标准差。MIKASA 用两个记忆任务：<i>ShellGameTouch-v0</i>（球被杯子盖住后仍要记住位置并去碰对杯子）与 <i>RememberColor3-v0</i>（记住方块颜色并在多色中选出它）。</p>
+<table>
+<tr><th>方法（括号内为上下文帧数）</th><th>ShellGameTouch</th><th>RememberColor3</th><th>两任务均值（本页计算）</th></tr>
+<tr><td>DP (2) / (4) / (8)</td><td>11 / 23 / 18</td><td>16 / 3 / 7</td><td>13.5 / 13 / 12.5</td></tr>
+<tr><td>DP-PTP (8)</td><td>26</td><td>4</td><td>15</td></tr>
+<tr><td>MaIL (8)</td><td>27</td><td>11</td><td>19</td></tr>
+<tr><td>Octo-small (10)</td><td>46</td><td>45</td><td>45.5</td></tr>
+<tr><td>OpenVLA (1)</td><td>47</td><td>59</td><td>53</td></tr>
+<tr><td>π0 (1)</td><td>33</td><td>35</td><td>34</td></tr>
+<tr><td>SpatialVLA</td><td>23</td><td>27</td><td>25</td></tr>
+<tr><td>CronusVLA</td><td>32</td><td>31</td><td>31.5</td></tr>
+<tr><td>MemoryVLA</td><td>88</td><td>44</td><td>66</td></tr>
+<tr><td>BPP（Qwen3-VL 2B 选帧）</td><td>94</td><td>21</td><td>57.5</td></tr>
+<tr><td>MemER（Qwen3-VL 2B 选帧 + 文本子目标）</td><td>82</td><td>27</td><td>54.5</td></tr>
+<tr><td><b>DP-VPWEM (L2S2)</b></td><td><b>91</b></td><td><b>82</b></td><td><b>86.5</b></td></tr>
+</table>
+<img class="figure" src="figures/fig2_mikasa_results.png" alt="MIKASA 两个记忆任务的柱状图：左为 ShellGameTouch-v0，右为 RememberColor3-v0；横轴为 17 种方法，纵轴为成功率；DP-VPWEM 在两任务上分别为 91% 与 82%，BPP 在左图为 94%，MemoryVLA 在左图为 88%">
+<p class="caption">Figure 5：MIKASA 两个记忆任务的成功率（%），柱顶标数值、误差棒为 3 个种子的标准差。左图 ShellGameTouch 上 BPP（Qwen3-VL 2B 选帧）与 VPWEM 分别为 94 / 91，误差棒重叠；右图 RememberColor3 上 VPWEM 82% 明显领先。原图：作者 LaTeX 源码 <code>figure/benchmark_mikasa.pdf</code> 以 300 dpi 渲染，对应原文第 6 页 Figure 5。</p>
+<p>数字取自 Figure 5 柱顶标注（成功率 %）。两件事必须同时说清：<b>（i）</b>VPWEM 并非每个任务都第一——ShellGameTouch 上 BPP 以 94% 略高于 91%，两者误差棒重叠，不应读成显著差异；<b>（ii）</b>优势几乎全部来自 RememberColor3：82% 对次优 OpenVLA 59%，其余方法多在 3–44%。本文正文称「在 MIKASA 记忆任务上比包括 VLA 在内的 SOTA 平均高出 20% 以上」，按本页对上表两列取均值，VPWEM 86.5% 比最强的记忆型 VLA（MemoryVLA，66%）高 20.5 个百分点，比 OpenVLA（53%）高 33.5 个百分点——「20%」的具体基数论文未写明，可理解为相对最强 VLA 基线的口径。</p>
+<p>MoMaRT 用五个长时程移动操作任务（dwclean / skclean / dwsetup / dssetup / unload，各含 expert 与 suboptimal 两种示教），Robomimic 用 Square、Transport（ph / mh）以及来自 DP-PTP 的非马尔可夫变体 Long-Horizon Square（要把方块放到离初始位置最远的钉子上，噪声脚本示教使当前位姿无法推出目标）。Figure 4 的 Average 列：</p>
+<table>
+<tr><th>Average 列</th><th>DP</th><th>DP-PTP</th><th>MaIL</th><th>RNN</th><th>DP-VPWEM</th><th>MaIL-VPWEM</th></tr>
+<tr><td>MoMaRT（10 个设置）</td><td>50</td><td>62</td><td>66</td><td>41</td><td><b>69</b></td><td><b>71</b></td></tr>
+<tr><td>Robomimic（4 个设置）</td><td>60</td><td>71</td><td>73</td><td>68</td><td><b>72</b></td><td><b>73</b></td></tr>
+</table>
+<p>MoMaRT 上正文说「平均提升 5%」，但按图示 Average 列，DP-VPWEM 69% 相对最强基线 MaIL 66% 只高 3 个百分点，相对 DP 的 50% 高 19 个百分点；「5%」更像是对逐任务增量取平均的结果，<b>具体口径未在已核验的公开材料中确认</b>。Robomimic 一侧作者自评「与基线相当」，72% 与 MaIL 的 73% 在误差范围内，符合「马尔可夫任务上记忆不添乱」的预期。</p>
+<p>成本对照（Table II，unload-suboptimal）：</p>
+<table>
+<tr><th>指标</th><th>DP-PTP L=4</th><th>DP-PTP L=32</th><th>DP-PTP L=128</th><th>DP-VPWEM</th></tr>
+<tr><td>模型大小 (M)</td><td>50.67</td><td>50.69</td><td>50.73</td><td>52.98</td></tr>
+<tr><td>显存 (MB)</td><td>656</td><td>942</td><td>1792</td><td>734</td></tr>
+<tr><td>训练 (s/step)</td><td>0.02</td><td>0.08</td><td>0.18</td><td>0.09</td></tr>
+<tr><td>推理 (s)</td><td>0.17</td><td>0.35</td><td>0.72</td><td>0.22</td></tr>
+<tr><td>成功率 (%)</td><td>46.1</td><td>49.6</td><td>40.4</td><td><b>58.3</b></td></tr>
+</table>
+<img class="figure" src="figures/fig3_ablation.png" alt="Long-Horizon Square 上的五组消融：(a) 固定窗口基线与 BPP/MemER 的成功率；(b) 记忆 token 数（LxSy）的影响；(c) 压缩器层数；(d) 最大 cache 容量；(e) cache 淘汰策略">
+<p class="caption">Figure 6(a)：Long-Horizon Square 上的五组消融，纵轴均为成功率（%）。从左到右依次为基线对比、记忆 token 数（<code>LxSy</code>）、压缩器层数、最大 cache 容量、淘汰策略。原图：作者 LaTeX 源码 <code>figure/ablation.pdf</code> 以 300 dpi 渲染，对应原文第 7 页 Figure 6(a)。</p>
+<p>消融都在 Long-Horizon Square 上做（Figure 6a）：基线一侧 DP(2)/(4)/(8) 为 16/7/4、DP-PTP(4)/(8) 为 20/30、MaIL(2)/(4)/(8) 为 42/37/29、BPP 1、MemER 4；压缩器层数 1/2/3 分别 51/67/73，说明「更深 → 摘要更有信息量」；最大 cache 2/4/8/16 为 50/63/65/66，<b>超过 8 就饱和</b>——作者的解读是长历史本身冗余，压缩器能把必要信息塞进少数 token；cache 管理上 FIFO 65、K-Means 65、AdjSim 67、Random 54，除随机淘汰外无差别，因此主实验用最简单的 FIFO。记忆 token 数上，<code>L1S1</code>（1 个长期 + 1 个短期）已达 65%，已超过所有固定窗口基线；图示随 token 数增加整体上升（最高一根为 85%），但 <code>L2S4</code> / <code>L4S4</code> 回落到 50% / 48%，作者据此选 <code>L2S2</code> 作主配置。这里有一个容易读混的符号问题：变体名 <code>LxSy</code> 中的 <code>L</code> 指长期（episodic）token 数、<code>S</code> 指短期（working）帧数，而 Table I 用 <code>L</code> 表示 short-term 嵌入数、<code>M</code> 表示 long-term 嵌入数，两套记法恰好相反。</p>
+<p>「关键信息探针」是本文最有意思的一处间接证据（Figure 6b）：在 100 条 episode 上采集 working 与 episodic embedding，按时间步分组，训一个 MLP 去回归<b>初始帧的 embedding</b>。结果显示 episodic token 保留的初始状态信息始终多于 working token，验证损失低 20 倍；即便跑到第 400 步，仍低 4 倍——这与「压缩器确实把 episode 级信息带了下来」一致，也与海马体把工作记忆固化到皮层的类比自洽。注意这只是相关性证据：探针能解码出初始状态，不等于策略真的用了它。</p>
+<p>泛化实验只做了一个方向：把在 ShellGameTouch 上训好的冻结图像编码器 + 压缩器直接迁到 ShellGamePush 与 ShellGamePick，分别得 90% 与 63%。这说明摘要模块没有过拟合到单一任务的视觉细节，但没有跨 embodiment、跨相机布置的迁移结果。真机部分：AgileX Cobot Magic，任务是把胶带放回原盘，180 条示教、1e6 步、30 次试验，DP 37% → DP-VPWEM 67%，单次 action chunk 延迟 72 ms → 79 ms（该 79 ms 与 Table II 的 0.22 s 统计口径不同，前者是部署流水线的 action chunk 端到端，后者是仿真里含 50 步去噪的完整前向，二者不可直接比较）。</p>
+<p>不能横向比较的地方有三处：VLA 基线的数字（Octo / OpenVLA / π0 / SpatialVLA / CronusVLA / MemoryVLA）直接引自 MIKASA 原文与 MemoryVLA，不是作者在 CleanDiffuser 里重跑的，训练数据、观测分辨率、动作空间未必一致；BPP 与 MemER 用的是 Qwen3-VL 2B 的高层摘要，与 5 帧级联的 DP 类基线不是同一类系统；所有仿真结果只有 3 个种子，误差棒在 ShellGameTouch 上明显偏大。</p>
+
+<h2 id="fit">6. 优点、局限与 VLA 适配</h2>
+<div class="duo">
+<div><h4>可迁移</h4><p>「定长 query + 每层 summary cache + 出窗即压缩」这套结构，可以直接挂到任何有 cross-attention 条件的策略上（扩散、flow、甚至 VLA 的 action head）；三处防捷径的做法（分段随机抽样、cache detach、记忆 token dropout 0.3）与主干无关，可单独复用；把 <code>S</code>（细节回看窗口）与 <code>M</code>（摘要带宽）拆成两个旋钮，比「一个窗口长度」好调。</p></div>
+<div><h4>不成立的前提</h4><p>它假设「任务相关信息可以在 BC 损失下被无监督地压进 2 个 token」。当任务需要记住多个离散事实（例如 5 个物体的位置与颜色组合），2 个 256 维 token 的信息带宽会先饱和，而饱和在训练损失上看不出来，只表现为成功率突然掉。它也假设压缩器学到的捷径不会伤人——但论文没有重建或对比约束来排除这一点，探针实验只能证明「初始状态可解码」，不能证明「策略依赖的是正确的东西」。</p></div>
+</div>
+<p><b>延迟风险。</b>每步都要跑一次压缩器，虽然只有 2 层，但它串在控制回路里，且不可与 50 步去噪并行（去噪需要 <code>eτ</code> 作为条件）。真机上 79 ms/chunk、chunk 长 8 步，等效控制频率取决于执行器如何插值；若把 <code>M</code> 或 <code>S</code> 调大以换精度，压缩器的 query 数或 key 数随之增长，延迟会上升；论文只给了 DP-PTP 在上下文 4→128 时的成本曲线，<b>没有给 VPWEM 在 <code>S=2…16</code> 下的延迟</b>，这条曲线需要先在目标硬件上量一遍。</p>
+<p><b>真机闭环风险。</b>压缩器是开环的：它压什么完全由「帧何时滑出窗口」决定，与任务是否处于关键阶段无关。真机上帧率抖动会让 <code>τ</code> 与位置编码错位，而 PE 是在训练时按步号注入的，部署帧率与训练不一致时需要重新标定，否则摘要会把「时间」记错。另外 FIFO 丢掉的是最旧的帧，长任务里最需要记住的往往正是最早那几帧（初始位姿、初始颜色），此时唯一的载体就是被反复覆写的 summary token——这一点在 Long-Horizon Square 上就是靠探针的 20 倍差距撑着的，属于弱证据。</p>
+<p><b>最小改造方案。</b>如果目标策略是 VLA：把 <code>eτ</code> 拼到动作专家的 cross-attention 条件里（与语言 token 并列），压缩器单独训练、冻结 VLM 主干；先在 2 帧窗口的基线上验证「记忆有没有用」，再逐步加 <code>M</code>。若要缓解压缩不可逆，按作者自己列的 future work 加一条重建损失（从 <code>eτ</code> 解码回被抽样的帧 embedding），或按 <code>S</code> 保留一小份原始 embedding 供注意力回查——这两条都不改变固定预算的前提。</p>
+
+<h2 id="repro">7. 落地清单</h2>
+<ul class="checklist">
+<li>先在目标任务上跑通 <b>DP(2)</b> 基线并记录成功率（MIKASA 参照值：ShellGameTouch 11%、RememberColor3 16%）。若基线已经很高，说明任务本身接近马尔可夫，加记忆不会有收益。</li>
+<li>按 Table I 配压缩器：<code>N=2</code> 层、<code>M=2</code> 个 query、<code>L=2</code> 帧滑窗、观测/摘要 cache 上限 <code>S=8</code>、FIFO、memory dropout 0.3、subsample ratio 5（短任务）/ 20（长任务），并确认 <code>fτ</code> 与 <code>qn,τ</code> 入 cache 前已 detach。</li>
+<li>扫两个旋钮：<code>S ∈ {2,4,8,16}</code>、<code>M ∈ {1,2,4}</code>。验收标准不是「越高越好」，而是「<code>S</code> 超过 8 后是否饱和」——若仍在涨，说明任务的细节需求超出固定预算，应改用可回查的混合方案。</li>
+<li>加一条首帧探针作为记忆保真度的体检：采 100 条 episode 的 <code>eτ</code> 与 <code>wt</code>，训 MLP 回归 <code>o0</code>，比较两者 MSE（论文口径：episodic 低 20 倍）。若两者接近，说明压缩器没在存 episode 级信息。</li>
+<li>部署前做延迟预算：单次 action chunk 79 ms（50 步 DDPM、<code>H=8</code>、算力为原文平台）。若控制周期要求更短，先降 <code>K</code> 或换 flow matching，不要先砍 <code>M</code>——砍 <code>M</code> 伤的是记忆带宽，砍 <code>K</code> 伤的是动作精度，后者更容易补偿。</li>
+<li>做一组对照：在同样配置下加重建辅助损失，与纯 BC 训练比较 Long-Horizon 类任务的成功率与探针 MSE，验证「只靠 BC 学出来的摘要」是否存在捷径。</li>
+</ul>
+<div class="srcbox">
+<p><b>来源：</b>Yuheng Lei, Zhixuan Liang, Hongyuan Zhang, Ping Luo, "VPWEM: Non-Markovian Visuomotor Policy with Working and Episodic Memory", IEEE Robotics and Automation Letters（2026 年 7 月录用）, arXiv:2603.04910v2；代码 https://github.com/HarryLui98/code_vpwem。结构参数取自第 IV 节与 Table I（<code>N=2, M=2, L=2, S=8</code>, dropout 0.3），成本数字取自 Table II，MIKASA 数字为 Figure 5 柱顶标注、MoMaRT / Robomimic 为 Figure 4 的 Average 列，消融取自 Figure 6(a)，探针与真机数字取自第 V-C、V-D 节与 Figure 6(b)。「两任务均值」一列为本页按图中两柱取算术平均所得。</p>
+<p><b>图像说明：</b>三张图都取自作者 LaTeX 源码中的独立矢量 PDF，按其内容边界以 300 dpi 渲染为 PNG（不是整页截图，也未从论文页面裁切）——<code>figure/framework.pdf</code>（原文 Figure 2）、<code>figure/benchmark_mikasa.pdf</code>（原文 Figure 5）、<code>figure/ablation.pdf</code>（原文 Figure 6(a)）。取值为本页对照源码 PDF 渲染放大后逐柱读取。</p>
+</div>
+<p class="pagefoot">相关页面：<a href="../remem-vla/index.html">ReMem-VLA · 双层递归 query 记忆</a> · <a href="../mikasa-robo/index.html">MIKASA-Robo · 记忆任务基准</a> · <a href="../nativemem/index.html">NativeMEM · 原生记忆压缩</a> · <a href="../online-memory/index.html">返回专题三</a></p>
+</article>
+</div>
+</main>
+</body>
+</html>

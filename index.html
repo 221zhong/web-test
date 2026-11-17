@@ -9,18 +9,18 @@
 <body>
 <header>
 <div class="wrap">
-<div class="eyebrow">Research Notes · 23 Deep Reads</div>
+<div class="eyebrow">Research Notes · 36 Deep Reads</div>
 <h1>VLA 的历史记忆该怎么建</h1>
-<p>两个专题、23 篇精读：何时把观测写成事件，以及写进去的历史以什么形式保存、压缩与找回</p>
+<p>三个专题、36 篇精读：何时把观测写成事件，以什么形式保存与找回，以及在闭环控制里怎么用</p>
 </div>
 </header>
 <main>
 
 <section class="lead">
-<b>站点定位：</b>这里不放文献清单，只回答两个工程问题。第一，VLA 在连续观测里凭什么判断「这一刻值得写进长期记忆」——这是<a href="papers/index.html">专题一</a>；第二，写进去的东西用什么表征承载、在固定显存下怎么压缩与检索——这是<a href="papers/kv-cache-event-memory/index.html">专题二</a>。每篇都是独立子页，页首有决策卡，直接给「最小可复用件 / 主要风险 / 复现门槛」。
+<b>站点定位：</b>这里不放文献清单，只回答三个工程问题。第一，VLA 在连续观测里凭什么判断「这一刻值得写进长期记忆」——这是<a href="papers/index.html">专题一</a>；第二，写进去的东西用什么表征承载、在固定显存下怎么压缩与检索——这是<a href="papers/kv-cache-event-memory/index.html">专题二</a>；第三，这些记忆在一段真实任务里怎么被写入、检索并改变动作——这是<a href="papers/online-memory/index.html">专题三</a>。每篇都是独立子页，页首有决策卡，直接给「最小可复用件 / 主要风险 / 复现门槛」。
 </section>
 
-<h2>两个专题</h2>
+<h2>三个专题</h2>
 <div class="entry">
 <a class="entry-card" href="papers/index.html">
 <div class="num">Topic 01</div>
@@ -34,9 +34,15 @@
 <p>从跨控制步复用、事件驱动写入到分层压缩与低比特量化，回答「以什么形式保存」。核心矛盾是预算固定而历史无限：每个 token、每一层、每个精度位都要有分配依据。</p>
 <div class="statrow"><span class="stat">11 篇精读</span><span class="stat">P0 × 5</span><span class="stat">P1 × 5</span><span class="stat">P2 × 1</span></div>
 </a>
+<a class="entry-card" href="papers/online-memory/index.html">
+<div class="num">Topic 03</div>
+<h3>在线记忆</h3>
+<p>从记忆 bank、原生视频、递归折叠到控制索引的状态差分，回答「记忆怎么进动作」。核心矛盾是因果性：不能看未来，却必须在几十步之后仍拿得出当时的证据。</p>
+<div class="statrow"><span class="stat">13 篇精读</span><span class="stat">P0 × 5</span><span class="stat">P1 × 5</span><span class="stat">P2 × 3</span></div>
+</a>
 </div>
 
-<h2>全站路线总览</h2>
+<h2>专题一 × 专题二：从写入到保存</h2>
 <div class="wide">
 <table>
 <tr>
@@ -78,7 +84,56 @@
 </table>
 </div>
 
-<h2>两条线怎么接</h2>
+<h2>专题三：记忆怎么进控制回路</h2>
+<div class="wide">
+<table>
+<tr>
+<th>记忆形态</th>
+<th>代表工作</th>
+<th>写入什么</th>
+<th>代价</th>
+</tr>
+<tr>
+<td>记忆 bank</td>
+<td><a href="papers/memoryvla/index.html">MemoryVLA</a>、<a href="papers/chameleon/index.html">Chameleon</a></td>
+<td>感知/认知 token、控制索引的事件 token，按任务相关性检索后混入当前工作记忆</td>
+<td>写入规则与容量管理要自己设计，检索错了会持续污染输入</td>
+</tr>
+<tr>
+<td>原生历史</td>
+<td><a href="papers/simplememvla/index.html">SimpleMemVLA</a>、<a href="papers/nativemem/index.html">NativeMEM</a></td>
+<td>带时间戳的原始帧，或每帧压成一个 token</td>
+<td>上下文长度与显存随任务时长线性增长</td>
+</tr>
+<tr>
+<td>折叠状态</td>
+<td><a href="papers/vpwem/index.html">VPWEM</a>、<a href="papers/remem-vla/index.html">ReMem-VLA</a></td>
+<td>递归压缩得到的固定数量 episodic token / recurrent query</td>
+<td>不可逆的信息损失，长任务上会饱和</td>
+</tr>
+<tr>
+<td>分层摘要</td>
+<td><a href="papers/mem/index.html">MEM</a>、<a href="papers/memer/index.html">MemER</a></td>
+<td>短期视频 + 长期文本摘要，或任务相关关键帧</td>
+<td>摘要质量取决于写摘要的那次调用，错误会被反复读取</td>
+</tr>
+<tr>
+<td>状态差分</td>
+<td><a href="papers/evomem-vla/index.html">EvoMem-VLA</a></td>
+<td>有序状态对的 directional delta，记录「交互后变了什么」</td>
+<td>依赖可靠的状态配对，对相机抖动与位姿噪声敏感</td>
+</tr>
+<tr>
+<td>前瞻</td>
+<td><a href="papers/memoryvla-plus/index.html">MemoryVLA++</a></td>
+<td>memory bank + latent world model 想象出的未来状态</td>
+<td>多一条前向推理，想象错误可能反向污染记忆</td>
+</tr>
+</table>
+</div>
+<p>验收这一层不能只看成功率：同一条记忆若在不同时间尺度上被读取，证据到动作的延迟、显存峰值、以及「拿掉记忆后任务是否真的失败」都要单独报告。<a href="papers/mikasa-robo/index.html">MIKASA-Robo</a> 给广度，<a href="papers/robomme/index.html">RoboMME</a> 给同 backbone 的横评，<a href="papers/rmbench/index.html">RMBench</a> 给机制消融，三者合起来才够。</p>
+
+<h2>三条线怎么接</h2>
 <div class="duo">
 <div>
 <h4>专题一决定「写不写」</h4>
@@ -88,15 +143,19 @@
 <h4>专题二决定「怎么存」</h4>
 <p>它管的是表征与预算：已确认的事件以 KV、摘要还是嵌入保存，多少层、多少位、留多久。产出是一份能在显存上限内被检索的历史。</p>
 </div>
+<div>
+<h4>专题三决定「怎么用」</h4>
+<p>它管的是闭环：记忆在哪个控制步被读取、以什么条件检索、如何改变动作分布。产出一条能被延迟预算约束住的策略，而不是一份事后可查的档案。</p>
 </div>
-<p>把两者接错的典型表现是：事件检测 F1 很好看，但下游查询命中率没有提升——因为写入的粒度、位置或精度与检索接口不匹配。因此验收必须回到 <a href="papers/ego4d-episodic-memory/index.html">Ego4D EM</a> 那类任务：给定历史与查询，能否返回正确的证据区间。</p>
+</div>
+<p>把三者接错的典型表现，是每一层单独看都很好：事件检测 F1 很高，但下游查询命中率没有提升；或者记忆检索很准，但延迟吃掉了闭环频率。验收因此要分两级——先回到 <a href="papers/ego4d-episodic-memory/index.html">Ego4D EM</a> 那类任务，给定历史与查询能否返回正确的证据区间；再到 <a href="papers/robomme/index.html">RoboMME</a> 这类设定，拿掉记忆后任务是否真的失败。</p>
 
 <h2>从哪里开始读</h2>
 <div class="route">
 <div class="card">
 <div class="step">Step 1 · 先看闭环</div>
-<h3><a href="papers/kemo/index.html">KEMO</a></h3>
-<p>全站唯一把「候选 → 写入 → VLA 控制」跑在真实双臂上的工作。先建立「记忆如何改变策略输入」的直觉，再回头补各环节的替代方案。</p>
+<h3><a href="papers/memoryvla/index.html">MemoryVLA</a></h3>
+<p>把「工作记忆 → 长时 bank → 门控回注 → 条件化扩散动作头」这条链路写全，且推理开销几乎可忽略。先建立「记忆如何改变策略输入」的直觉，再回头补各环节的替代方案。</p>
 </div>
 <div class="card">
 <div class="step">Step 2 · 再补约束</div>
@@ -104,9 +163,14 @@
 <p>在线系统的硬约束是「不可回改」。这两篇给出两种提交粒度：边沿触发与终点回溯，决定了你能多早、多准地冻结一个事件。</p>
 </div>
 <div class="card">
-<div class="step">Step 3 · 最后压预算</div>
-<h3><a href="papers/streammem/index.html">StreamMem</a> · <a href="papers/hierarchical-event-memory/index.html">Hierarchical Event Memory</a></h3>
-<p>一条从 KV 侧压容量，一条从事件侧分槽位。读完能判断自己的系统该先省算力还是先省显存。</p>
+<div class="step">Step 3 · 然后压预算</div>
+<h3><a href="papers/streammem/index.html">StreamMem</a> · <a href="papers/vpwem/index.html">VPWEM</a></h3>
+<p>一条从 KV 侧压容量，一条把历史递归折进固定数量的 episodic token。读完能判断自己的系统该先省算力还是先省显存。</p>
+</div>
+<div class="card">
+<div class="step">Step 4 · 最后验收</div>
+<h3><a href="papers/robomme/index.html">RoboMME</a> · <a href="papers/rmbench/index.html">RMBench</a></h3>
+<p>同一 backbone 横评 14 种记忆变体，以及可做机制消融的 9 任务集。没有这一步，前面的调参无法判断是不是记忆在起作用。</p>
 </div>
 </div>
 
@@ -116,7 +180,7 @@
 <p>事实纪律：数字只写论文报告值，分开标注作者结论与本页分析；无法核验的细节写「未在已核验的公开材料中确认」，不做估算。图像优先取自作者公开的 LaTeX 源码；只有 PDF 排版图的论文，按该 figure 的包围盒精确裁切（不含图注、正文、页眉页脚与相邻图表），裁不干净才改用本站重绘并标注「本站重绘」。</p>
 </div>
 
-<p class="pagefoot">在线入口：<a href="papers/index.html">专题一</a> · <a href="papers/kv-cache-event-memory/index.html">专题二</a> ｜ 仓库：<a href="https://github.com/221zhong/web-test">221zhong/web-test</a></p>
+<p class="pagefoot">在线入口：<a href="papers/index.html">专题一</a> · <a href="papers/kv-cache-event-memory/index.html">专题二</a> · <a href="papers/online-memory/index.html">专题三</a> ｜ 仓库：<a href="https://github.com/221zhong/web-test">221zhong/web-test</a></p>
 </main>
 </body>
 </html>

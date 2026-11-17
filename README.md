@@ -1,6 +1,6 @@
 # VLA 历史记忆：论文精读站点
 
-在线入口：[主导航页](https://221zhong.github.io/web-test/)。本站围绕 VLA 的历史信息维护组织为两个可独立阅读的专题：历史关键事件检测，以及 KV Cache 与事件记忆。每篇精读均为独立子网页，可持续扩充。
+在线入口：[主导航页](https://221zhong.github.io/web-test/)。本站围绕 VLA 的历史信息维护组织为三个可独立阅读的专题：历史关键事件检测、KV Cache 与事件记忆，以及 VLA 的在线记忆。每篇精读均为独立子网页，可持续扩充。
 
 ## 专题一：历史关键事件检测
 
@@ -46,6 +46,28 @@
 | P1 | StreamKV | AAAI 2026 · 2025-11 | [打开网页](https://221zhong.github.io/web-test/papers/streamkv/) | 语义事件段的 KV 摘要、检索与分层压缩 |
 | P1 | Video-MemComp | ACM MM 2026 · 2026-10 | [打开网页](https://221zhong.github.io/web-test/papers/video-memcomp/) | Taylor 敏感度和逐层动态 KV 预算 |
 | P2 | VidKV | arXiv 预印本 · 2025-03 | [打开网页](https://221zhong.github.io/web-test/papers/vidkv/) | Video LLM 的超低比特 Key / Value KV 量化 |
+
+## 专题三：在线记忆
+
+该专题讨论 VLA 在闭环操控中如何写入、保存、检索并在动作端使用任务内历史。前两个专题停在感知侧的表征与预算，这一层必须落在控制回路里：写入的东西要在几十到几百个控制步之后改变动作，而每一步都要付延迟与显存。所选工作均为**因果在线**设定，推理时只能访问当前与过去的观测/动作；性能数字来自各论文自己的模型与协议，不能横向排名。
+
+专题总览：[在线记忆专题](https://221zhong.github.io/web-test/papers/online-memory/)。
+
+| 优先级 | 工作 | 发表信息 | 在线精读页面 | 关注点 |
+| --- | --- | --- | --- | --- |
+| P0 | MemoryVLA | ICLR 2026 · 2025-08 | [打开网页](https://221zhong.github.io/web-test/papers/memoryvla/) | 感知/认知 token 巩固为 memory bank，检索后条件化 diffusion 动作专家 |
+| P0 | MemoryVLA++ | arXiv 预印本 · 2026-06 | [打开网页](https://221zhong.github.io/web-test/papers/memoryvla-plus/) | 记忆指导的 latent world model，同时利用过去状态与未来演化 |
+| P0 | MEM | 技术报告 · 2026-03 | [打开网页](https://221zhong.github.io/web-test/papers/mem/) | 短期稠密视频 + 长期文本摘要的双尺度具身记忆 |
+| P0 | MemER | ICLR 2026 · 2025-10 | [打开网页](https://221zhong.github.io/web-test/papers/memer/) | 高层提议并检索关键帧，低层策略凭稀疏历史证据动作 |
+| P0 | SimpleMemVLA | arXiv 预印本 · 2026-09 | [打开网页](https://221zhong.github.io/web-test/papers/simplememvla/) | 不设独立记忆模块，原生带时间戳视频 + KV 前缀复用 |
+| P1 | Chameleon | arXiv 预印本 · 2026-03 | [打开网页](https://221zhong.github.io/web-test/papers/chameleon/) | 几何落地的事件 token 写入可微 memory stack，按控制状态索引 |
+| P1 | ReMem-VLA | arXiv 预印本 · 2026-03 | [打开网页](https://221zhong.github.io/web-test/papers/remem-vla/) | 帧级与 chunk 级 recurrent queries 兼顾短时与长时上下文 |
+| P1 | VPWEM | arXiv / RA-L · 2026-03 | [打开网页](https://221zhong.github.io/web-test/papers/vpwem/) | 滑窗 working memory 与固定数量 episodic token 的常数开销 |
+| P1 | NativeMEM | arXiv 预印本 · 2026-07 | [打开网页](https://221zhong.github.io/web-test/papers/nativemem/) | 复用 VLA 编码器把每帧压成单 token，先训 tokenizer 再微调 |
+| P1 | EvoMem-VLA | arXiv 预印本 · 2026-10 | [打开网页](https://221zhong.github.io/web-test/papers/evomem-vla/) | 有序状态对的 directional delta token 记录状态改变 |
+| P2 | MIKASA-Robo | ICLR 2026 · 2025-02 | [打开网页](https://221zhong.github.io/web-test/papers/mikasa-robo/) | 32 个原始任务 / VLA 版 90 个语言条件任务、10 类记忆 |
+| P2 | RoboMME | ICML 2026 · 2026-03 | [打开网页](https://221zhong.github.io/web-test/papers/robomme/) | 在 π0.5 上横评 14 种 memory variant |
+| P2 | RMBench | arXiv 预印本 · 2026-03 | [打开网页](https://221zhong.github.io/web-test/papers/rmbench/) | 9 个按记忆复杂度分层的任务，适合机制消融 |
 
 ## 目录结构
 

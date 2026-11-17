@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>在线记忆：VLA 长时程任务内记忆｜VLA 历史记忆</title>
+<link rel="stylesheet" href="../../style.css">
+</head>
+<body>
+<header><div class="wrap">
+<div class="eyebrow">VLA Historical Memory · Topic</div>
+<h1>专题三：在线记忆</h1>
+<p>VLA 在闭环操控中如何写入、保存、检索并在动作端使用任务内历史——13 篇论文路线</p>
+<nav><a href="../../index.html">← 返回总站</a></nav>
+</div></header>
+<main>
+<section class="lead"><b>专题问题：</b>前两个专题回答「何时写入」与「以什么形式保存」，但它们大多停在感知侧的表征与预算。真正跑闭环时，记忆必须落在控制回路里：写进去的东西要在几十到几百个控制步之后改变动作，而且每一步都要付出延迟与显存。本专题的 13 篇工作全部是<strong>因果在线</strong>设定——推理时只能看当前与过去的观测，不能取未来帧，也不能读 oracle 状态；数字均来自各论文自己的模型、任务与协议，不能横向排名。</section>
+
+<h2>13 篇工作如何覆盖完整路径</h2>
+<table>
+<tr><th>系统环节</th><th>代表工作</th><th>关键问题</th><th>对本专题的含义</th></tr>
+<tr><td>写入触发</td><td>MEM、EvoMem-VLA</td><td>子任务边界与状态变化，哪个才是记忆的自然单位？</td><td>写入时机决定记忆粒度：一段视频、一次交互，还是一次状态差分。</td></tr>
+<tr><td>记忆表征</td><td>MemoryVLA、Chameleon、NativeMEM、SimpleMemVLA</td><td>记忆存 token、事件、单帧压缩 token，还是原封不动的视频？</td><td>表征越接近原观测，保真越高、预算越贵，这是本专题的主轴。</td></tr>
+<tr><td>长期维护</td><td>VPWEM、ReMem-VLA</td><td>固定预算下，如何让每步计算与显存近似常数？</td><td>递归压缩与 recurrent query 是两条把历史「折进」固定状态的路。</td></tr>
+<tr><td>索引与检索</td><td>MemER、MemoryVLA</td><td>未来需求未知时，靠什么条件把对的证据找回来？</td><td>检索条件从语言目标，扩展到了控制状态与任务进度。</td></tr>
+<tr><td>动作接口</td><td>MemoryVLA++、Chameleon</td><td>记忆如何进入 action head，是条件化还是先生成子任务？</td><td>记忆不是额外输入，而是改变扩散/flow 策略条件分布的信号。</td></tr>
+<tr><td>评测</td><td>MIKASA-Robo、RoboMME、RMBench</td><td>怎么证明「记不住就做不对」？</td><td>三个基准分别覆盖广度、横评与机制消融，缺一不可。</td></tr>
+</table>
+
+<h2>三条技术路线，各自的赌注</h2>
+<section class="grid">
+<div class="card"><span class="tag">路线 A · 记忆 bank</span><h3>显式写入，条件化读取</h3><p><a href="../memoryvla/index.html">MemoryVLA</a>、<a href="../memoryvla-plus/index.html">MemoryVLA++</a>、<a href="../chameleon/index.html">Chameleon</a> 把历史写成可检索的 bank / stack。赌注是「未来的查询可以被一个学出来的相似度函数近似」，代价是写入规则与容量管理要自己设计。</p></div>
+<div class="card"><span class="tag">路线 B · 原生历史</span><h3>不压缩，靠复用扛成本</h3><p><a href="../simplememvla/index.html">SimpleMemVLA</a>、<a href="../nativemem/index.html">NativeMEM</a> 尽量保留原始视觉，靠 KV 前缀复用或单 token 压缩把成本压下来。赌注是「提前压缩一定丢证据」，代价是上下文长度与显存。</p></div>
+<div class="card"><span class="tag">路线 C · 折叠状态</span><h3>把历史折进固定状态</h3><p><a href="../vpwem/index.html">VPWEM</a>、<a href="../remem-vla/index.html">ReMem-VLA</a> 用递归压缩或 recurrent query 维持固定预算。赌注是「任务需要的历史信息有低维结构」，代价是不可逆的信息损失。</p></div>
+</section>
+
+<h2>快速选型</h2>
+<table>
+<tr><th>任务特征</th><th>优先路线</th><th>代表工作</th></tr>
+<tr><td>近期遮挡、细粒度视觉证据</td><td>保留原生历史视频</td><td><a href="../simplememvla/index.html">SimpleMemVLA</a>、<a href="../nativemem/index.html">NativeMEM</a></td></tr>
+<tr><td>分钟级多阶段任务且有实时约束</td><td>短期视频 + 长期文本摘要</td><td><a href="../mem/index.html">MEM</a></td></tr>
+<tr><td>少数关键事件需在很久后回忆</td><td>任务条件关键帧 / memory bank 检索</td><td><a href="../memer/index.html">MemER</a>、<a href="../memoryvla/index.html">MemoryVLA</a></td></tr>
+<tr><td>当前画面相同、但历史决定正确动作</td><td>几何事件 + 控制条件检索</td><td><a href="../chameleon/index.html">Chameleon</a></td></tr>
+<tr><td>需要固定预算的持续在线状态</td><td>递归压缩或 recurrent queries</td><td><a href="../vpwem/index.html">VPWEM</a>、<a href="../remem-vla/index.html">ReMem-VLA</a></td></tr>
+<tr><td>核心是追踪动作带来的状态改变</td><td>显式状态差分 token</td><td><a href="../evomem-vla/index.html">EvoMem-VLA</a></td></tr>
+<tr><td>既要记过去又要预测后续状态</td><td>memory bank + latent world model</td><td><a href="../memoryvla-plus/index.html">MemoryVLA++</a></td></tr>
+</table>
+
+<h2>推荐阅读顺序</h2>
+<table>
+<tr><th>阶段</th><th>阅读顺序</th><th>目标</th></tr>
+<tr><td>先建立直觉</td><td><a href="../memoryvla/index.html">MemoryVLA</a> → <a href="../memer/index.html">MemER</a></td><td>看清「写入 bank + 检索」这条最主流路线，以及检索式记忆的最小实现。</td></tr>
+<tr><td>再补成本约束</td><td><a href="../simplememvla/index.html">SimpleMemVLA</a> → <a href="../nativemem/index.html">NativeMEM</a></td><td>理解「不压缩」与「压成一个 token」这两个极端各自的代价。</td></tr>
+<tr><td>然后是分层与检索条件</td><td><a href="../mem/index.html">MEM</a> → <a href="../chameleon/index.html">Chameleon</a> → <a href="../evomem-vla/index.html">EvoMem-VLA</a></td><td>比较双尺度、控制索引与状态差分三种记忆单位。</td></tr>
+<tr><td>最后是固定预算与前瞻</td><td><a href="../vpwem/index.html">VPWEM</a> → <a href="../remem-vla/index.html">ReMem-VLA</a> → <a href="../memoryvla-plus/index.html">MemoryVLA++</a></td><td>判断该把历史折进状态，还是额外学一个未来模型。</td></tr>
+<tr><td>验收</td><td><a href="../mikasa-robo/index.html">MIKASA-Robo</a> → <a href="../robomme/index.html">RoboMME</a> → <a href="../rmbench/index.html">RMBench</a></td><td>用统一协议检验「少了记忆就做不对」是否真的成立。</td></tr>
+</table>
+
+<h2>论文精读</h2>
+<section class="grid">
+<a class="paper-card" href="../memoryvla/index.html"><span class="tag">P0 · 感知—认知记忆 bank</span><h3>MemoryVLA</h3><p>工作记忆巩固成 bank，检索历史 token 条件化 diffusion 动作专家。</p><p class="meta">VLA 操控 · ICLR 2026</p></a>
+<a class="paper-card" href="../memoryvla-plus/index.html"><span class="tag">P0 · 记忆 + 想象</span><h3>MemoryVLA++</h3><p>记忆指导下的 latent world model，同时利用过去状态与未来演化。</p><p class="meta">VLA 操控 · 2026</p></a>
+<a class="paper-card" href="../mem/index.html"><span class="tag">P0 · 多尺度具身记忆</span><h3>MEM</h3><p>短期稠密视频 + 长期文本摘要，VLM 出子任务、VLA 执行。</p><p class="meta">VLA 系统 · 2026 技术报告</p></a>
+<a class="paper-card" href="../memer/index.html"><span class="tag">P0 · 经验检索</span><h3>MemER</h3><p>高层 VLM 提议并筛选关键帧，低层策略凭稀疏历史证据动作。</p><p class="meta">VLA 操控 · ICLR 2026</p></a>
+<a class="paper-card" href="../simplememvla/index.html"><span class="tag">P0 · 原生视频记忆</span><h3>SimpleMemVLA</h3><p>不做独立记忆模块，带时间戳历史视频直接进模型并复用 KV 前缀。</p><p class="meta">VLA 操控 · 2026</p></a>
+<a class="paper-card" href="../chameleon/index.html"><span class="tag">P1 · 控制索引情景记忆</span><h3>Chameleon</h3><p>事件 token 与本体、指令对齐成轨迹库，按控制状态索引回忆，并预测未来控制上下文。</p><p class="meta">视觉运动策略 · 2026</p></a>
+<a class="paper-card" href="../remem-vla/index.html"><span class="tag">P1 · 双层 recurrent query</span><h3>ReMem-VLA</h3><p>帧级与 chunk 级 recurrent queries 兼顾短时上下文与长时记忆。</p><p class="meta">VLA 操控 · 2026</p></a>
+<a class="paper-card" href="../vpwem/index.html"><span class="tag">P1 · 工作记忆 + 情景记忆</span><h3>VPWEM</h3><p>滑窗 working memory 与固定数量 episodic tokens，每步开销近常数。</p><p class="meta">视觉运动策略 · 2026 / RA-L</p></a>
+<a class="paper-card" href="../nativemem/index.html"><span class="tag">P1 · 原生记忆压缩</span><h3>NativeMEM</h3><p>复用 VLA 自身编码器把每帧压成单 token，先训 tokenizer 再微调。</p><p class="meta">VLA 操控 · 2026</p></a>
+<a class="paper-card" href="../evomem-vla/index.html"><span class="tag">P1 · 状态演化记忆</span><h3>EvoMem-VLA</h3><p>以有序状态对的 directional delta token 记录「交互后改变了什么」。</p><p class="meta">VLA 操控 · 2026</p></a>
+<a class="paper-card" href="../mikasa-robo/index.html"><span class="tag">P2 · 记忆基准</span><h3>MIKASA-Robo</h3><p>32 个原始任务、VLA 版 90 个语言条件任务，覆盖 10 类记忆。</p><p class="meta">Benchmark · ICLR 2026</p></a>
+<a class="paper-card" href="../robomme/index.html"><span class="tag">P2 · 记忆表征横评</span><h3>RoboMME</h3><p>在 π0.5 上系统比较 14 种 memory variant 的表征与集成方式。</p><p class="meta">Benchmark · ICML 2026</p></a>
+<a class="paper-card" href="../rmbench/index.html"><span class="tag">P2 · 机制消融基准</span><h3>RMBench</h3><p>9 个按记忆复杂度分层的任务，适合做机制级消融与归因。</p><p class="meta">Benchmark · 2026</p></a>
+</section>
+
+<h2>和前两个专题怎么接</h2>
+<div class="duo">
+<div><h4>专题一给「事件」</h4><p>它决定哪一刻值得写：候选、确认、提交、维护。产出的是一条带起止与证据的语义事件，而不是连续帧缓存。</p></div>
+<div><h4>专题二给「存储」</h4><p>它决定事件以什么形式落地：KV、摘要、量化位宽、分层预算。产出是一份能在显存上限内被检索的历史。</p></div>
+</div>
+<p>本专题补上最后一环：<b>记忆如何改变动作</b>。工程上最容易接错的地方也在这里——事件检测的 F1 再高，只要写入粒度、索引条件与动作接口对不上，闭环表现就不会提升。反过来，凡是能在真机上报告长时程任务成功率的工作（如 <a href="../memoryvla/index.html">MemoryVLA</a>、<a href="../mem/index.html">MEM</a>、<a href="../memer/index.html">MemER</a>），都同时交代了写入规则、检索条件与动作头的接法，值得作为模板。</p>
+
+<h2>记录新论文时的字段</h2>
+<div class="wide">
+<table>
+<tr><th>字段</th><th>建议填写内容</th></tr>
+<tr><td>在线性</td><td>是否严格因果；是否使用未来帧或 oracle state</td></tr>
+<tr><td>写入触发</td><td>每步、固定间隔、子任务边界、接触/遮挡/状态变化事件</td></tr>
+<tr><td>记忆单元</td><td>原始帧、视频 token、关键帧、文本摘要、latent state、对象-几何事件</td></tr>
+<tr><td>索引 / 检索条件</td><td>语言目标、当前视觉、机器人状态、时间戳、空间关系、置信度</td></tr>
+<tr><td>遗忘策略</td><td>滑窗、容量上限、聚合、合并冗余、重要性淘汰</td></tr>
+<tr><td>动作接口</td><td>直接条件化 action head、生成子任务再执行、分层 planner + VLA</td></tr>
+<tr><td>评测</td><td>记忆类型、证据到使用的延迟、成功率、延迟、显存、反事实历史干预</td></tr>
+</table>
+</div>
+</main>
+</body>
+</html>

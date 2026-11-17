@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MIKASA-Robo｜专题三 · 在线记忆</title>
+<link rel="stylesheet" href="../../style.css">
+</head>
+<body>
+<header>
+<div class="wrap">
+<div class="crumb"><a href="../../index.html">VLA 历史记忆</a> / <a href="../online-memory/index.html">专题三 · 在线记忆</a> / P2-1</div>
+<div class="eyebrow">Paper Deep Read · 记忆基准：把「要不要记住」变成可控自变量</div>
+<h1>Memory, Benchmark &amp; Robots: A Benchmark for Solving Complex Tasks with Reinforcement Learning</h1>
+<p>Egor Cherepanov, Nikita Kachaev, Alexey K. Kovalev, Aleksandr I. Panov · AXXX / MIRIAI / ITMO University AI Talent Hub · ICLR 2026（arXiv 2502.10550v3，初版 2025-02）｜<a href="https://arxiv.org/abs/2502.10550">arXiv</a> · <a href="https://github.com/CognitiveAISystems/MIKASA-Robo">代码</a></p>
+</div>
+</header>
+<main>
+<div class="doc-layout">
+<aside class="doc-side">
+<nav class="sidenav">
+<h4>本页目录</h4>
+<a href="#summary">1 核心摘要</a>
+<a href="#stage">2 记忆环节定位</a>
+<a href="#problem">3 问题与动机</a>
+<a href="#method">4 基准设计</a>
+<a href="#evidence">5 证据与实验</a>
+<a href="#fit">6 优点、局限与 VLA 适配</a>
+<a href="#repro">7 落地清单</a>
+<div class="side-extra">它不提供记忆模块，提供的是「记忆需求」的刻度尺：在你自建任务上照抄它的 phase 协议与 oracle 变量表，比照抄它的成功率数字有用得多。</div>
+</nav>
+</aside>
+<article>
+<div class="verdict">
+<div class="vt">决策卡</div>
+<p>能拿到一套把「记忆需求」隔离成单变量的桌面操作任务族（RL 版 32 个任务 / 语言版 90 个环境），以及 VLA 在记忆任务上「掉得多快」的横评数字；代价是它只报成功率、场景高度原子化，任务长度相差 86 倍因而不可直接平均，而且论文正文的 VLA 评测只覆盖 5 个任务。</p>
+<dl>
+<dt>最小可复用件</dt><dd>三段式 episode 模板（观察窗 5 步 → 空桌延迟 5 步 → 响应窗到 T）+ 每任务的 oracle 变量定义 + 3/5/9 与 3/5/7 这种同结构难度阶梯。可以直接搬到自有任务上做记忆消融，不必依赖它的仿真器。</dd>
+<dt>主要风险</dt><dd>不同任务 T 从 25 步到 2160 步，成功率不是同一量纲，跨任务平均会失真；state/oracle 观测模式会给到真值信息，只应作「任务可解」上界，混进训练就变成信息泄漏；90 任务与 10 类记忆来自仓库发布，不在论文正文里。</dd>
+<dt>复现门槛</dt><dd>仿真侧单张 A100 可跑（ManiSkill3，示例 512 并行环境）；VLA 微调每任务 250 条专家轨迹、50k 迭代；离线侧每任务 1000 条成功轨迹；真机实验用 SO-101 + π0.5，每任务 300 条遥操作演示。</dd>
+</dl>
+</div>
+
+<h2 id="summary">1 核心摘要</h2>
+<p><b>问题。</b>记忆增强 RL 的评测长期是碎片化的：表 2 统计的近二十个记忆智能体，几乎每个都只在自己随论文发布的环境里验证，彼此任务集重叠极小；甚至不少工作在 Atari + frame stacking 这种本质仍是 MDP 的设定上宣称「记忆能力」。机器人操作这一侧更极端——表 3 里 ManiSkill3、RoboCasa、RLBench、Meta-World、robosuite 等主流框架在「是否有记忆任务」「是否原子任务」两列上几乎全为空；BEHAVIOR-1K、iGibson 2.0 虽然含记忆需求，但任务过于复合，观测到失败也说不清是记忆坏了还是感知/规划坏了。于是出现了本文开头那张漫画式的困境：A 说「我在我的任务上更好」，B 说「我在我的任务上更好」，没人能判定谁的记忆机制更好。</p>
+<p><b>做法要点。</b>作者把问题拆成三层。第一层是<b>分类法</b>：从发展心理学借来客体永久性、工作记忆、记忆广度等概念，把记忆密集型任务划成四类——Object Memory、Spatial Memory、Sequential Memory、Memory Capacity（第 4.2 节），并给出形式化定义：记忆密集型任务是一个 POMDP，其中存在相关时距 <code>ξ &gt; 1</code>，即「关键事件发生」与「必须回忆该信息」之间至少隔一步。第二层是 <b>MIKASA-Base</b>：把散落在 POPGym、Memory Gym、DMLab、MiniGrid、BSuite 等处的开源记忆环境统一到一个 Gym 风格 API，并按「向量诊断层 / 图像复杂层」两级组织，便于先把记忆机制单独验干净，再加感知难度。第三层是 <b>MIKASA-Robo</b>：基于 ManiSkill3 自建 32 个桌面操作任务、12 个任务族，每族用同一套 phase 结构把记忆负荷参数化。</p>
+<p><b>关键数字。</b>32 个任务的超时从 60 步（RememberColor/Shape 系列）到 180 步（TakeItBack）；五类观测模式（state / RGB / joints / oracle / prompt）与两套奖励（dense / sparse）可任意组合，标准记忆测试配置是 RGB+joints；另有每任务 1000 条专家轨迹用于离线 RL。仓库的语言条件版本进一步扩到 <b>90 个环境、10 类记忆、22,500 条专家轨迹</b>，episode 长度 25–2160 步，并按 Short/Medium/Long 三档切分（38/30/22 个任务）。</p>
+<p><b>判定：</b>这不是一篇记忆方法论文，而是一台把「记忆需求」做成自变量的评测装置。它最值得抄的不是排行榜，而是「观察窗—空窗—响应窗」这个可参数化的时序骨架，以及表 1 里那列 oracle 变量——它等于替你写清了「这个任务到底要求记住什么」。</p>
+
+<h2 id="stage">2 记忆环节定位</h2>
+<div class="flowline"><span class="part">写入触发</span><span>记忆表征</span><span>索引检索</span><span>动作接口</span><span class="on">评测</span></div>
+<p>基准本身不实现任何记忆：没有 bank、没有压缩器、没有检索器。它命中的是<b>评测</b>这一格，同时对<b>写入触发</b>构成部分约束——因为它用 episode 的 phase 结构规定了「信息何时出现、何时消失、何时必须被用」，等价于规定了记忆的写入时机与读取窗口，但不规定用什么结构去存。</p>
+<table>
+<tr><th>维度</th><th>MIKASA-Robo 的规定</th></tr>
+<tr><td>输入</td><td>逐步观测 <code>o_t</code>（RGB 双目 或 state 向量）、固定语言指令（语言版）、以及可供调试/上界使用的 oracle 字段</td></tr>
+<tr><td>输出</td><td>每 episode 的终止标志、稀疏成功位、稠密奖励分量；对外只汇总成功率</td></tr>
+<tr><td>交给下游</td><td>一个可比的分母：同一任务、同一 T、同一观测模式下不同记忆机制的 SR；以及一套可复用的任务参数（cue 时长、延迟、候选数、序列长度）</td></tr>
+<tr><td>在线性</td><td>任务侧是严格因果 POMDP，策略只能看 <code>o_{1:t}</code>；但 <b>state 模式与 oracle 字段会把隐藏变量直接交给智能体</b>，作者明确只用它验证「任务可解（SR=100%）」，不用于记忆测试。用错这一条，整个基准就退化成 MDP</td></tr>
+</table>
+<p>三个必答问题：<b>记忆单位</b>是一个 cue——一个颜色、一个形状、一个被杯子盖住的球的位置、一个被观察到的初速度、一串颜色序列；<b>写入频率</b>是 phase 边界的一次性写入，而不是每步写（观察窗内目标可见 5 步，随后消失），因此它测的是「一次性写入 + 长间隔后读取」，不是流式增量维护；<b>读取条件</b>是动作兑现——在响应窗内 touch / push / pick 到正确对象，或把球停在目标区、把钉子转到目标角。没有「读出向量」这种中间接口，读取成败只能通过行为反推。</p>
+
+<h2 id="problem">3 问题与动机</h2>
+<p>论文把失败模式拆成三种，且都能在自己的表里指出来。</p>
+<p><b>（1）评测集不重叠，结论不可比。</b>表 2 列出 DRQN、R2D2、GTrXL、AMAGO、RATE、DCEM 等二十余个工作与其所用环境，交叉打勾后可以看到：DMLab-30 与 POPGym 是少数被多方复用的，其余如 car flag、HeavenHell、Object Permanence、Numpad、Memory Maze 基本只服务一两个工作。更刺眼的是「Atari with FrameStack」一列被当成记忆测试——帧堆叠只给了固定 4 帧窗口，本质仍是有限历史的 MDP。</p>
+<p><b>（2）机器人操作侧默认全观测。</b>表 3 用三列（Memory Tasks / Manipulation / Atomic Low-level actions）横评 20 余个操作框架，只有本文与同期 MemoryBench 三列全勾；LIBERO、BEHAVIOR-1K、iGibson 2.0 有记忆需求但任务不原子；VIMA 依赖高层动作抽象，时序记忆根本伸不开；ManiSkill3、RoboCasa、RLBench 等则完全没有记忆任务。作者的判断是：这不是框架能力不足，而是社区没把「记忆」当成需要单独设计的一维。</p>
+<p><b>（3）VLA 的「记忆」被 action chunk 冒充。</b>第 6.4 节选了 Octo、OpenVLA、π0、SpatialVLA 四个基线，它们都没声称实现记忆机制。结果出现一个很能说明问题的分裂：OpenVLA 在 chunk <code>K=8</code> 时 RememberColor3 成功率为 0.59，而 <code>K=4</code> 时只有 0.21；作者的解释是「大 chunk 可以在一次生成里把初始线索直接兑现成整段轨迹」，从而绕过记忆，而小 chunk 下早期的正确动作会迅速崩掉。这条观察对任何做 VLA 记忆的人都是直接的对照组设计警告：<b>如果你的基线带大 chunk，你测到的可能不是记忆增益</b>。</p>
+<p>动机因此落在「隔离变量」四个字上：任务要短到不需要长程信用分配，又要长到足以让马尔可夫策略必然失败。作者在附录 B 里把这条写得很直白——RememberColor 只要一次遮挡就非马尔可夫，所以 60 步的短 horizon 就够暴露记忆缺陷。</p>
+
+<h2 id="method">4 基准设计</h2>
+<img class="figure" src="figures/fig1_task_overview.png" alt="MIKASA-Robo 三个代表性记忆任务的时间切片">
+<p class="caption">三个代表性任务的时间切片：ShellGameTouch-v0（左，球被杯子盖住后去碰正确杯子）、RememberColor9-v0（中，先看一个颜色，空桌，再从 9 个候选里选同色）、RotateLenientPos-v0（右，随机朝向的钉子转到目标角）。画面上叠加的 Step / Reward / Target 是作者调试 wrapper 的输出。原图：作者 LaTeX 源码 <code>images/envs-demo.pdf</code>（正文 Figure 2），由矢量源直接渲染，未做 PDF 页面裁切。</p>
+
+<h3>4.1 分类法：论文四类，发布版十类</h3>
+<p>论文第 4.2 节给出四类，每一类都对应认知科学里的一个概念，且都能落到一个具体动作上：</p>
+<table>
+<tr><th>类别</th><th>认知对应</th><th>论文中的机器人例子</th><th>MIKASA-Robo 中的落点</th></tr>
+<tr><td>Object Memory</td><td>客体永久性、范畴知觉</td><td>记住自己把哪个水果放进了冰箱</td><td>RememberColor / RememberShape / RememberShapeAndColor，共 9 个任务</td></tr>
+<tr><td>Spatial Memory</td><td>空间地图、位置回忆</td><td>打扫时挪开的杯子要放回原位</td><td>ShellGame、Intercept、InterceptGrab、Rotate、TakeItBack，共 14 个任务</td></tr>
+<tr><td>Sequential Memory</td><td>系列回忆、工作记忆</td><td>记住往汤里下料的顺序</td><td>ChainOfColors，3 个任务</td></tr>
+<tr><td>Memory Capacity</td><td>记忆广度</td><td>擦桌子时同时记住多个物体的位置</td><td>BunchOfColors、SeqOfColors，6 个任务</td></tr>
+</table>
+<p>需要分清的是：<b>仓库发布的语言条件版把分类扩到 10 类</b>（Object / Spatial / Sequential / Capacity / Temporal / Tracking / Procedural / Prospective / Checklist / Negative），新增六类分别对应计时（数灯闪次数、在数到第 100 步时搬运）、动态追踪（杯子洗牌后仍要跟住球）、程序性技能（照着一个形状轨迹复现）、前瞻意图（干活途中记住一次灯闪，完工后按对应按钮）、清单核对（逐个试电池并记录哪些是好的）与「缺席判断」（找出之前没出现过的那个物体）。这 10 类的定义与切分只出现在仓库 README 与任务清单中，<b>论文正文没有给出定义</b>，引用时不要写成论文结论。</p>
+
+<img class="figure" src="figures/fig2_taxonomy.png" alt="MIKASA 在人类记忆任务与智能体记忆任务之间的定位">
+<p class="caption">作者的定位论证：左侧「智能体记忆任务」太简单，撑不起真实世界的记忆谱系；右侧「人类记忆任务」太复杂，没法写成 RL 问题；MIKASA 取中间——够简洁，但也不是简单时空依赖。原图：作者 LaTeX 源码 <code>images/mikasa.pdf</code>（正文 Figure 3），矢量源直接渲染。</p>
+
+<h3>4.2 任务族的时序协议：观察窗 / 空窗 / 响应窗</h3>
+<p>12 个任务族共享同一套三段式骨架，只是参数不同。以附录 K 的时序为准（<code>N</code> 为要记的项目数）：</p>
+<table>
+<tr><th>任务族</th><th>观察（cue）</th><th>空窗 / 遮挡</th><th>响应</th><th>超时 T</th><th>难度轴</th></tr>
+<tr><td>ShellGame（Touch/Push/Pick）</td><td>0–4 步，球在某位置可见</td><td>第 5 步三个杯子同时盖下</td><td>第 6 步起碰/推/提起正确杯子</td><td>90</td><td>交互强度（碰 → 推 → 提起 &gt;0.1 m）</td></tr>
+<tr><td>RememberColor / Shape</td><td>0–4 步，单个方块可见</td><td>5–9 步空桌</td><td>第 10 步起在候选里选同色/同形</td><td>60</td><td>候选数 3 / 5 / 9</td></tr>
+<tr><td>RememberShapeAndColor</td><td>0–4 步</td><td>5–9 步</td><td>第 10 步起选「形状+颜色」联合匹配</td><td>60</td><td>3×2 / 3×3 / 5×3 组合</td></tr>
+<tr><td>BunchOfColors</td><td>0–4 步，N 个方块同时出现</td><td>5–9 步</td><td>第 10 步起触碰全部 N 个，顺序不限</td><td>120</td><td>N = 3 / 5 / 7</td></tr>
+<tr><td>SeqOfColors</td><td>0–(5N−1) 步，N 个方块各展示 5 步</td><td>5N–(5N+4) 步</td><td>第 5N+5 步起全部触碰，顺序不限</td><td>120</td><td>N = 3 / 5 / 7</td></tr>
+<tr><td>ChainOfColors</td><td>同 SeqOfColors</td><td>同 SeqOfColors</td><td>第 5N+5 步起按<b>原顺序</b>触碰</td><td>120</td><td>N = 3 / 5 / 7</td></tr>
+<tr><td>TakeItBack</td><td>初始位置可见</td><td>第二阶段不再可见</td><td>先搬到目标区，灯变紫后再搬回原处</td><td>180</td><td>只有一档，靠双阶段记忆</td></tr>
+<tr><td>Intercept / InterceptGrab</td><td>球滚动的若干帧</td><td>无显式遮挡，靠速度外推</td><td>把球挡进目标区 / 抓住并举稳</td><td>90</td><td>初速 0.25–0.5 / 0.5–0.75 / 0.75–1.0 m/s</td></tr>
+<tr><td>RotateLenient / Strict</td><td>初始朝向</td><td>无（但目标角每步以 prompt 给出）</td><td>旋转到目标角并保持静止</td><td>90</td><td>单向 / 双向；允许/禁止平移中心</td></tr>
+</table>
+<p>注意后两族与前六族的差别：Intercept 与 Rotate 的「记忆」不是被遮挡对象的身份，而是<b>对自身已执行动作的积分</b>（球速、已转过的角度）。这也是表 1 把它们归到 Spatial 而不是 Object 的原因——它们要求维持一个随动作变化的内部量，而不是一个静态属性。</p>
+
+<h3>4.3 可观测变量与隐藏变量：oracle 列就是规格说明书</h3>
+<p>表 1 的 Oracle Info 列是全篇信息量最大的一列，它逐任务写清了「必须被记住的那个量」：</p>
+<table>
+<tr><th>任务</th><th>隐藏变量（Oracle Info）</th><th>含义</th></tr>
+<tr><td>ShellGameTouch/Push/Pick</td><td><code>cup_with_ball_number</code></td><td>球在几号杯下</td></tr>
+<tr><td>Intercept / InterceptGrab</td><td><code>initial_velocity</code></td><td>球的初速度（位置序列可从观测推，速度需要外推）</td></tr>
+<tr><td>RotateLenient / Strict</td><td><code>y_angle_diff</code>、<code>target_angle</code></td><td>当前相对初始朝向的偏转、目标角</td></tr>
+<tr><td>TakeItBack</td><td><code>xyz_initial</code></td><td>方块的初始三维位置，第二阶段不再可见</td></tr>
+<tr><td>RememberColor / BunchOfColors / SeqOfColors / ChainOfColors</td><td><code>true_color_indices</code></td><td>正确颜色在候选集合里的下标</td></tr>
+<tr><td>RememberShape / RememberShapeAndColor</td><td><code>true_shape_indices</code>、<code>true_shapes_info</code>、<code>true_colors_info</code></td><td>正确形状/颜色组合的下标与属性表</td></tr>
+</table>
+<p>形式化上，任务是一个 POMDP <code>(S, A, T, R, Ω, O, γ)</code>，策略只能依赖观测历史 <code>π(a_t | o_{1:t})</code>；记忆需求由相关时距 <code>ξ</code> 刻画。<b>实际操作上最有价值的是这列 oracle 的三个用途</b>：(a) 在 state 模式下作为上界，验证任务本身可解（作者用 PPO-MLP 在全部任务上打到 100%）；(b) 在训练专家数据时作为特权信息，让采集策略稳定成功；(c) 作为评测时的禁止输入清单——凡是出现在这列里的量，都不能进策略的观测。</p>
+
+<h3>4.4 观测、动作、奖励与仿真后端</h3>
+<p><b>观测</b>有五种可组合模式：<code>state</code>（完整向量，含 oracle 与 TCP 位姿）、<code>RGB</code>（顶视 + 夹爪两路图像，VLA 侧为 128×128）、<code>joints</code>（关节状态 + TCP 位姿，离线数据里是 25 维）、<code>oracle</code>（任务相关调试字段）、<code>prompt</code>（静态任务指令）。论文明确写了：任意组合都可以，但 <b>RGB+joints 是标准记忆测试配置</b>，state 模式只留给「验证这是不是一个 MDP 可解任务」。<b>动作</b>是 8 维末端增量位姿（ManiSkill3 的 <code>pd_ee_delta_pose</code> 控制器）。<b>奖励</b>两套：稀疏为 0/1 成功位；稠密由「夹爪到目标距离 + 到目标区距离 + 关节速度平滑项 + 静止保持项 + 完成奖励」逐项加权而成，每个任务族的权重组略有不同（附录 K 逐族列出）。<b>后端</b>是 ManiSkill3，默认 Franka Panda，GPU 并行（官方示例 <code>num_envs=512</code>），并支持换臂——附录 B 的 Figure 7 用 Unitree 等不同机械臂跑了同一个 ShellGameTouch 配置。</p>
+<p>场景刻意保持原子：只有图元形状（方块、圆柱、钉子、球、杯子），不加纹理、不加杂波。作者的理由是避免把记忆失败与感知/接触失败混在一起；同时也给了升级路径——同一记忆结构可以换成 YCB 物体（RememberObject3-v0）或加杂波（附录 B 的 Figure 8/9），记忆需求不变而感知难度上升。</p>
+
+<h3>4.5 语言条件如何给出（语言版，非论文正文）</h3>
+<p>论文第 6.4 节只给 5 个任务配了指令（见表 5），且每个任务<b>一条固定指令</b>，不是逐 episode 改写：</p>
+<table>
+<tr><th>任务</th><th>T</th><th>Language instruction（原文）</th></tr>
+<tr><td>RememberColor3/5/9-v0</td><td>60</td><td>Remember the color of the cube and then pick the matching one</td></tr>
+<tr><td>ShellGameTouch-v0</td><td>90</td><td>Memorize the position of the cup covering the ball, then pick that cup</td></tr>
+<tr><td>InterceptMedium-v0</td><td>90</td><td>Track the ball's movement, estimate its velocity, then aim the ball at the target</td></tr>
+</table>
+<p>仓库的语言条件版则给 90 个环境各写了一条指令（<code>mikasa_robo_vla_envs.csv</code> 的 <code>language_instruction</code> 列），措辞更强调「观察—等待—兑现」三段，例如 <i>Observe which cup hides the ball, wait, then touch that cup.</i> 与 <i>Count how many times the blue lamp blinks, press the red button exactly that many times when the red lamp turns green.</i></p>
+<p><b>32 → 90 的关系要说清：一半是包装，一半是新增任务族。</b>按清单逐条比对，90 个环境里既有原始 32 族的直接语言化版本（ShellGameTouch/Push、Intercept 与 InterceptGrab 各三档、Rotate 四种、TakeItBack、Remember 三族 9 个、BunchOfColors / SeqOfColors / ChainOfColors 各 3 个），也有在此基础上拉长的 <code>-Long</code> 变体（Remember 族 600 步、Seq 与 Chain 800–1200 步、ShellGameShuffle 600 步），另一半则是论文里不存在的新任务族：ShellGameShuffle（洗牌追踪）、FindImposter（缺席判断）、BatteriesChecker（清单核对）、BlinkCountButtonPress（计数与定时）、TraceShape / TraceShapeSeq（程序性复现）、TimedTransfer（定步搬运）、GatherAndRecall（前瞻线索）。所以它不是「同一套任务换了句话」，而是<b>以原任务为骨架、按新的记忆类型扩出来的超集</b>；引用 90 这个数字时，不能把它当成论文 32 任务的评测结果。</p>
+<p><b>这意味着语言在这里不是变量而是常量</b>：它不测指令泛化，只测「同一句话在长间隔后还能不能被执行」。如果你的研究问题是语言条件记忆，这个基准只能作为起点。</p>
+
+<h2 id="evidence">5 证据与实验</h2>
+<p>基准论文的「实验」不是在证明某个方法强，而是在证明三件事：任务可解、任务确实需要记忆、现有方法在记忆需求升高时会掉。三条分别对应 state 上界、RGB 对比、以及 VLA/离线横评。</p>
+<table>
+<tr><th>协议</th><th>设置</th><th>指标</th><th>规模</th></tr>
+<tr><td>Online RL</td><td>PPO-MLP（无记忆基线）、PPO-LSTM、SAC、TD-MPC2；state 与 RGB+joints；dense 与 sparse</td><td>成功率（学习曲线）</td><td>3 次独立训练 × 每次 100 episode（seed 1–100），单卡 A100</td></tr>
+<tr><td>Offline RL</td><td>RATE、DT、BC、CQL、DP（另有 DMamba 等）；两路 RGB；sparse 为主</td><td>成功率</td><td>每任务 1000 条 PPO 专家轨迹</td></tr>
+<tr><td>VLA</td><td>Octo-small、OpenVLA（K=4/8）、SpatialVLA（K=4）、π0（K=4）</td><td>成功率（100 episode 的 mean ± sem）</td><td>每任务 250 条专家轨迹，50k 迭代</td></tr>
+<tr><td>真机</td><td>π0.5 + SO-101，三阶段协议</td><td>is_touched / is_picked</td><td>每任务 300 条遥操作演示，30 episode 评测</td></tr>
+</table>
+<p><b>RL 协议与 VLA 协议的四条差别</b>，混用会直接毁掉可比性：(1) <b>覆盖</b>——RL 侧 32 个任务全测，VLA 侧论文只测 5 个（ShellGameTouch、InterceptMedium、RememberColor3/5/9），而这 5 个恰好是四类记忆里最容易的两类；(2) <b>长度</b>——论文的 VLA 评测沿用原 T（RememberColor 60、ShellGame 90），仓库语言版却把短档压到 25–30 步，后者更容易刷高；(3) <b>数据</b>——在线 RL 从零训练，离线 1000 条/任务，VLA 只用 250 条/任务微调 50k 迭代，且 Octo 只训 readout head；(4) <b>汇报</b>——RL 是 3 个种子 × 每次 100 episode 的均值，VLA 是单模型 100 episode 的 mean ± sem。<b>指标本身只有成功率</b>：样本效率靠训练曲线（Figure 4/5/12/13）间接体现，没有部分分、没有过程指标、没有「记住了但没做对」这类分解；作者在第 7 节把「需要超越成功率与回报的新指标」列为未来工作。</p>
+<p><b>可解性上界。</b>PPO-MLP 在 state 模式下（即拿到 oracle 的 MDP 设定）在全部 32 个任务上达到 100% 成功率（附录 G）。这条数字的意义不是「PPO 强」，而是排除了「任务本身做不到」这个解释：后面所有 RGB 下的失败都只能归因于信息不足或记忆不足。</p>
+<p><b>记忆确实是瓶颈。</b>RGB+joints + dense 下，RememberColor3 上无记忆的 PPO-MLP 只有 25%，带 LSTM 的 PPO-LSTM 达到 100%；但同一任务族升到 5 色、9 色时，两者都跌到接近零。换成 sparse 奖励，连 3 色都学不出来（附录 G 的 Figure 13）。这组对比是全文最有力的一段：它同时给出了「记忆有用」与「现有记忆不够用」两侧证据。</p>
+<p><b>离线方法大面积归零。</b>表 8 的 32 任务全表中，RATE 在 ShellGameTouch 上 0.92±0.01、RememberColor3 上 0.65±0.04，是少数像样的成绩；而 BunchOfColors、SeqOfColors、ChainOfColors 三个族（共 9 个任务）上，RATE/DT/BC/CQL/DP 全部为 0.00±0.00。作者据此得出「连显式做序列建模的模型也解不了高容量与顺序记忆」。</p>
+<img class="figure" src="figures/fig3_offline_radar.png" alt="离线 RL 基线在 32 个任务上的雷达图，按四类记忆分区">
+<p class="caption">离线 RL 横评（RGB、sparse）：径向轴为成功率且取对数刻度（0.01→1.0），四个扇区对应四类记忆。可以看到高分集中在右上（ShellGameTouch）与顶部（RememberColor3），而 Sequential / Capacity 两个扇区贴地。原图：作者 LaTeX 源码 <code>images/spider_chart_v2.pdf</code>（正文 Figure 6），矢量源直接渲染。</p>
+<p><b>VLA 横评（论文 Table 4，5 个任务、100 episode、mean ± sem）。</b></p>
+<table class="cmp">
+<tr><th>模型</th><th>ShellGameTouch</th><th>InterceptMedium</th><th>RememberColor3</th><th>RememberColor5</th><th>RememberColor9</th></tr>
+<tr><td>Octo-small（ctx 10, K=4）</td><td>0.46 ± 0.05</td><td>0.39 ± 0.04</td><td>0.45 ± 0.06</td><td>0.17 ± 0.03</td><td>0.11 ± 0.03</td></tr>
+<tr><td>OpenVLA（K=4）</td><td>0.12 ± 0.05</td><td>0.06 ± 0.02</td><td>0.21 ± 0.00</td><td>0.09 ± 0.02</td><td>0.08 ± 0.02</td></tr>
+<tr><td>OpenVLA（K=8）</td><td>0.47 ± 0.05</td><td>0.14 ± 0.03</td><td>0.59 ± 0.04</td><td>0.16 ± 0.03</td><td>0.06 ± 0.02</td></tr>
+<tr><td>SpatialVLA（K=4）</td><td>0.23 ± 0.04</td><td>0.27 ± 0.04</td><td>0.27 ± 0.05</td><td>0.17 ± 0.03</td><td>0.11 ± 0.03</td></tr>
+<tr><td>π0（K=4）</td><td>0.33 ± 0.05</td><td>0.42 ± 0.03</td><td>0.35 ± 0.04</td><td>0.22 ± 0.04</td><td>0.15 ± 0.02</td></tr>
+</table>
+<p>读这张表的正确方式是<b>看同列内的相对降幅与跨列的趋势</b>，而不是排序：所有模型在 RememberColor 从 3 色升到 9 色时都单调下降（Octo 0.45→0.11，π0 0.35→0.15）；OpenVLA 在 K 从 4 升到 8 时在 RememberColor3 上从 0.21 跳到 0.59，但在 9 色上反而从 0.08 掉到 0.06——这正是作者所说「大 chunk 从早期线索直接生成整段轨迹，捷径在候选变多后失效」。真机侧（表 10）复现了同一模式：全观测的 Task 1 触碰成功率 1.00、抓取 0.80；无遮挡但动态的 Task 2 降到 0.63 / 0.43；完整遮挡+洗牌的 Task 3 崩到 0.10 / 0.10。</p>
+
+<h3>5.1 任务覆盖表（按仓库 90 环境清单）</h3>
+<p>下表按 <code>mikasa_robo_vla_envs.csv</code> 统计，代表任务取该类中长度中位附近的那个；「长度量级」是该类 <code>Max Length</code> 的最小–最大值。</p>
+<table>
+<tr><th>记忆类型</th><th>任务数</th><th>代表任务</th><th>长度量级（步）</th><th>这一格在测什么</th></tr>
+<tr><td>Object</td><td>18</td><td>RememberColor9-VLA-v0</td><td>25 – 600</td><td>遮挡后仍能认出对象属性</td></tr>
+<tr><td>Spatial</td><td>14</td><td>InterceptMedium-VLA-v0</td><td>30 – 90</td><td>位置/速度/朝向的维持与外推</td></tr>
+<tr><td>Capacity</td><td>12</td><td>SeqOfColors5-Long-VLA-v0</td><td>400 – 1200</td><td>同时保持多个项目</td></tr>
+<tr><td>Temporal</td><td>12</td><td>BlinkCountButtonPressMedium-VLA-v0</td><td>150 – 1200</td><td>计数与定时</td></tr>
+<tr><td>Sequential</td><td>6</td><td>ChainOfColors5-VLA-v0</td><td>400 – 1200</td><td>顺序本身是答案</td></tr>
+<tr><td>Procedural</td><td>6</td><td>TraceShapeMedium-VLA-v0</td><td>250 – 1500</td><td>复现已演示的动作程序</td></tr>
+<tr><td>Prospective</td><td>5</td><td>GatherAndRecall3-VLA-v0</td><td>200 – 1000</td><td>为将来动作保留线索</td></tr>
+<tr><td>Checklist</td><td>4</td><td>BatteriesCheckerHard-3-VLA-v0</td><td>540 – 2160</td><td>逐项核对并累积结论</td></tr>
+<tr><td>Tracking</td><td>4</td><td>ShellGameShuffleTouch-VLA-v0</td><td>60 – 600</td><td>动态遮挡下持续跟住目标</td></tr>
+<tr><td>Negative</td><td>9</td><td>FindImposterColor5-VLA-v0</td><td>25（全部）</td><td>判断「哪个没出现过」</td></tr>
+</table>
+<p>按 horizon 分档则是 Short 38 / Medium 30 / Long 22；按专家数据来源是 motion planning 56、PPO 34。</p>
+
+<h3>5.2 使用时最容易踩的坑</h3>
+<ul>
+<li><b>成功率不能跨任务平均。</b>任务长度从 25 步到 2160 步（86 倍），成功判据也各不相同（碰 0.1 秒 / 提起 0.1 m / 角度 ±0.1 rad / 球停在 r=0.1 m 内）。把 90 个 SR 直接取算术平均，等于让 25 步的 FindImposter 和 2160 步的 BatteriesChecker 权重相同。</li>
+<li><b>同名任务不同协议。</b>论文里 RememberColor3 的 T=60（观察 5 + 空窗 5 + 响应 50），仓库语言版是 25 步；ShellGameTouch 论文 90 步、语言版 30 步。引用数字时必须带版本，否则同一张表里混了两种难度。</li>
+<li><b>难度不是一条轴。</b>RememberColor3→9 是<b>候选集变大</b>，BunchOfColors 是<b>同时记忆项变多</b>，ChainOfColors 是<b>顺序约束</b>。三者从 3 到 7/9 的降幅不可互换解读。</li>
+<li><b>state/oracle 模式的上界不是成绩。</b>100% 只在拿到 oracle 时成立；把它当模型能力写进对比表是典型误用。</li>
+<li><b>0.00 不等于「方法无用」。</b>sparse 下大量离线方法为 0，可能是探索/信用分配失败，作者也把它归因于「任务在只有终止奖励时太难」。</li>
+<li><b>随机基线未给数值。</b>论文只说 Octo/OpenVLA「超过随机」「接近随机」，没有报告随机策略的具体成功率，因此不能自行反推「超过随机多少」。</li>
+</ul>
+
+<h2 id="fit">6 优点、局限与 VLA 适配</h2>
+<div class="duo">
+<div>
+<h4>可迁移</h4>
+<p>三段式 episode 骨架（固定 cue 窗 → 固定空窗 → 剩余响应窗）是可直接搬走的；oracle 变量列等于一份「必须记住什么」的规格；同结构三档难度（候选数、记忆项数、序列长度）让你能画出「记忆负荷—成功率」曲线，而不是只报一个点。</p>
+</div>
+<div>
+<h4>不成立的前提</h4>
+<p>图元场景、无纹理、无杂波、单技能单任务、每任务一条固定指令、只报成功率。它假设你的部署场景也这么干净。真实桌面上的遮挡来自杂波与自身手臂，而不是「第 5 步三个杯子同时盖下」这种剧本化的时刻。</p>
+</div>
+</div>
+<p><b>它在 VLA 论文里被当成什么用。</b>三种用法。其一是<b>记忆能力横评</b>：把 Octo / OpenVLA / π0 / SpatialVLA 放在同一任务、同一 episode 长度下，看谁在 3→9 色时掉得慢，这是表 4 的角色。其二是<b>反证 action chunk 不是记忆</b>：K=8 在 3 色上跳升、在 9 色上失效，说明大 chunk 只是把「线索→动作」压进一次生成，并没有跨 episode 段维持信息。其三是<b>真机前的筛子</b>：真机只做 RememberColor3 一族的三个变体，用「全观测 → 动态无遮挡 → 遮挡+洗牌」的三级阶梯把记忆从感知与控制里剥出来，这套阶梯本身比任务更值得复用。</p>
+<p><b>与专题内另外两个基准的分工。</b>按<a href="../online-memory/index.html">专题三</a>的组织方式，三者分别补不同的洞：MIKASA-Robo 提供<b>广度</b>——任务最多、记忆类型最全、且每个任务只压一种记忆，适合回答「我的记忆模块在哪一类上有效」；<a href="../robomme/index.html">RoboMME</a> 偏<b>横评</b>，用更接近真实场景的长视频任务比较现成 VLA；<a href="../rmbench/index.html">RMBench</a> 偏<b>机制消融</b>，关心「去掉记忆的哪一部分会坏」。实践顺序应当是：先用 MIKASA 的单变量任务确认机制方向对不对，再用机制型基准做消融，最后用场景型基准报对外数字。反过来做，你会得到一个在真实场景里略微提升、但说不清原因的系统。</p>
+<p><b>延迟与真机闭环风险。</b>基准本身不测推理延迟：episode 是 20 Hz 级的短程控制，最长 2160 步也只是一次几分钟的仿真回合，且并行环境把墙钟时间摊平。因此它无法回答「你的记忆模块每步多花 30 ms 会不会毁掉闭环」——这必须自己加测。真机侧只有一族任务、一台 SO-101、一块平板做遮挡，样本量 30 episode/任务；表 10 的 0.10 与 0.80 之间的差距足够说明方向，但不足以支撑「在真实厨房里也这样」。</p>
+<p><b>最小改造方案。</b>不要接它的仿真器，只借三样东西：(1) 把你自己的任务重写成「cue 窗 / 空窗 / 响应窗」，其中空窗长度是唯一被扫描的变量；(2) 为每个任务写出 oracle 变量并加入禁止输入清单；(3) 用同一结构做 3/5/9 三档，报告 SR 随档位的变化曲线。做完这三步，你就能判断自己的记忆模块是在「维持属性」还是在「维持顺序」上有效——这正是 MIKASA 想提供的判别力。</p>
+
+<h2 id="repro">7 落地清单</h2>
+<ul class="checklist">
+<li><b>先验可解性上界。</b>在 state/oracle 模式下训一个 PPO-MLP，要求 32 个（或你自己的）任务全部达到 SR=100%；达不到就说明任务设计或奖励有问题，先修任务再谈记忆。</li>
+<li><b>固定标准记忆配置。</b>测试一律用 RGB+joints、两路 128×128、episode 长度固定（Remember 族 60 步、容量族 120 步），不要在不同任务间改 T；每次评测 ≥100 episode、≥3 个训练种子，报 mean ± sem。</li>
+<li><b>做「无记忆 vs 有记忆」对照。</b>同一观测、同一奖励下比较 PPO-MLP 与 PPO-LSTM：若 3 档上差距不显著，你的任务没有记忆需求；若 3 档都接近 0，先换 dense 奖励排查，再判定为记忆瓶颈。</li>
+<li><b>按类型分组汇总，不做全局平均。</b>输出 per-task 表 + 按 Object / Spatial / Sequential / Capacity 分组的分组均值；跨任务比较只在同组、同 T、同观测模式下进行。</li>
+<li><b>数据规格对齐。</b>离线/模仿数据按 <code>rgb (T,128,128,6)</code>、<code>joints (T,25)</code>、<code>action (T,8)</code>、<code>reward (T,)</code>、<code>success (T,)</code>、<code>done (T,)</code> 组织，每任务 ≥1000 条成功轨迹，采集策略需带 oracle 特权信息。</li>
+<li><b>验收指标至少三个。</b>最终 SR、首次尝试正确率（first-touch accuracy）、以及在 T/2 之前达成阶段目标的比率——只报最终 SR 会掩盖「靠反复试错蒙对」。</li>
+</ul>
+
+<div class="srcbox">
+<p><b>来源：</b>Cherepanov, Kachaev, Kovalev, Panov, "Memory, Benchmark &amp; Robots: A Benchmark for Solving Complex Tasks with Reinforcement Learning", ICLR 2026, arXiv:2502.10550v3；任务与指标数字取自 Table 1（32 任务与 oracle 列、T）、Table 4（VLA 成功率）、Table 6/8（离线 RL）、Table 10（真机）、第 4.2 节（四类分类）、第 6.2–6.4 节与附录 B/C/D/G/I/K；90 任务、10 类记忆、25–2160 步、22,500 条轨迹来自官方仓库 README 与 <code>mikasa_robo_vla_envs.csv</code>，<b>不在论文正文中</b>。</p>
+<p><b>图像说明：</b>三张图均取自作者 LaTeX 源码的矢量 PDF（<code>images/envs-demo.pdf</code>、<code>images/mikasa.pdf</code>、<code>images/spider_chart_v2.pdf</code>），分别对应正文 Figure 2、Figure 3、Figure 6，按 2000/2000/1400 px 宽直接渲染为 PNG，未使用 PDF 页面裁切，图内文字与图注均为原作者所绘。</p>
+</div>
+<p class="pagefoot">相关页面：<a href="../robomme/index.html">RoboMME</a> · <a href="../rmbench/index.html">RMBench</a> · <a href="../online-memory/index.html">返回专题三</a></p>
+</article>
+</div>
+</main>
+</body>
+</html>
