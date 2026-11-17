@@ -6,6 +6,8 @@
 
 该专题研究 VLA 如何从连续观测中识别值得长期保留的状态转移，并避免把稠密视频或机器人轨迹全部写入记忆。P0 建立候选、确认、提交和维护链条；P1 补充表征、在线实例定位与历史增强机制；P2 给出“未来能否找回记忆”的评测标准。
 
+专题总览：[历史关键事件检测专题](https://221zhong.github.io/web-test/papers/)。
+
 | 优先级 | 工作 | 在线精读页面 | 关注点 |
 | --- | --- | --- | --- |
 | P0 | DDM-Net | [打开网页](https://221zhong.github.io/web-test/papers/ddm-net/) | 以 motion 与 appearance 的多层差分确认通用事件边界 |
@@ -20,8 +22,6 @@
 | P1 | HAT | [打开网页](https://221zhong.github.io/web-test/papers/hat/) | 以未来监督历史模块增强程序性第一视角动作定位 |
 | P1 | Event-VStream | [打开网页](https://221zhong.github.io/web-test/papers/event-vstream/) | motion、语义与预测线索共同触发事件写入和持久记忆更新 |
 | P2 | Ego4D Episodic Memory | [打开网页](https://221zhong.github.io/web-test/papers/ego4d-episodic-memory/) | 用 NLQ、VQ、MQ 验证历史事件能否被语言、对象和活动查询找回 |
-
-该专题的汇总入口：[P1 / P2 总览](https://221zhong.github.io/web-test/papers/)。
 
 ## 专题二：KV Cache 与事件记忆
 
