@@ -1,22 +1,31 @@
-# VLA 历史关键事件检测：论文精读站点
+# VLA 历史记忆：论文精读站点
 
-在线入口：[主导航页](https://221zhong.github.io/web-test/)。根页只负责导航与研究路线总览；每篇精读均为独立子网页，可持续扩充。
+在线入口：[主导航页](https://221zhong.github.io/web-test/)。本站围绕 VLA 的历史信息维护组织为两个可独立阅读的专题：历史关键事件检测，以及 KV Cache 与事件记忆。每篇精读均为独立子网页，可持续扩充。
 
-## 当前 P0 / P1 页面
+## 专题一：历史关键事件检测
 
-| 优先级 | 工作 | 在线精读页面 |
-| --- | --- | --- |
-| P0-1 | DDM-Net | [打开网页](https://221zhong.github.io/web-test/papers/ddm-net/) |
-| P0-2 | FlowGEBD | [打开网页](https://221zhong.github.io/web-test/papers/flowgebd/) |
-| P0-3 | CAG-QIL | [打开网页](https://221zhong.github.io/web-test/papers/cag-qil/) |
-| P0-4 | Hierarchical Event Memory | [打开网页](https://221zhong.github.io/web-test/papers/hierarchical-event-memory/) |
-| P0-5 | KEMO | [打开网页](https://221zhong.github.io/web-test/papers/kemo/) |
+该专题研究 VLA 如何从连续观测中识别值得长期保留的状态转移，并避免把稠密视频或机器人轨迹全部写入记忆。P0 建立候选、确认、提交和维护链条；P1 补充表征、在线实例定位与历史增强机制；P2 给出“未来能否找回记忆”的评测标准。
 
-P1 六篇精读入口：[P1 总览](https://221zhong.github.io/web-test/papers/)。
+| 优先级 | 工作 | 在线精读页面 | 关注点 |
+| --- | --- | --- | --- |
+| P0 | DDM-Net | [打开网页](https://221zhong.github.io/web-test/papers/ddm-net/) | 以 motion 与 appearance 的多层差分确认通用事件边界 |
+| P0 | FlowGEBD | [打开网页](https://221zhong.github.io/web-test/papers/flowgebd/) | 以稀疏轨迹和 flow normalization 低成本生成因果边界候选 |
+| P0 | CAG-QIL | [打开网页](https://221zhong.github.io/web-test/papers/cag-qil/) | 在线 proposal 的 pending / active / committed 提交决策 |
+| P0 | Hierarchical Event Memory | [打开网页](https://221zhong.github.io/web-test/papers/hierarchical-event-memory/) | 多尺度事件 proposal memory 与近期细、远期粗的长期维护 |
+| P0 | KEMO | [打开网页](https://221zhong.github.io/web-test/papers/kemo/) | 机器人运动显著性、因果峰值与视觉去重驱动的关键帧写入 |
+| P1 | Motion-Aware Self-Supervision | [打开网页](https://221zhong.github.io/web-test/papers/motion-aware-ssl/) | 以可微 motion module 学习对边界敏感的自监督表征 |
+| P1 | OadTR | [打开网页](https://221zhong.github.io/web-test/papers/oadtr/) | 用历史 Transformer 与训练期未来表征预测识别当前动作 phase |
+| P1 | OAT | [打开网页](https://221zhong.github.io/web-test/papers/oat/) | 多尺度 anchor proposal 与不可回改的在线实例定位 |
+| P1 | MATR | [打开网页](https://221zhong.github.io/web-test/papers/matr/) | 选择性历史队列，以及先终点、后起点的实例解码 |
+| P1 | HAT | [打开网页](https://221zhong.github.io/web-test/papers/hat/) | 以未来监督历史模块增强程序性第一视角动作定位 |
+| P1 | Event-VStream | [打开网页](https://221zhong.github.io/web-test/papers/event-vstream/) | motion、语义与预测线索共同触发事件写入和持久记忆更新 |
+| P2 | Ego4D Episodic Memory | [打开网页](https://221zhong.github.io/web-test/papers/ego4d-episodic-memory/) | 用 NLQ、VQ、MQ 验证历史事件能否被语言、对象和活动查询找回 |
 
-P2 评测基准精读：[Ego4D Episodic Memory](https://221zhong.github.io/web-test/papers/ego4d-episodic-memory/)。
+该专题的汇总入口：[P1 / P2 总览](https://221zhong.github.io/web-test/papers/)。
 
-## KV Cache 与事件记忆
+## 专题二：KV Cache 与事件记忆
+
+该专题关注 VLA / Video-LLM 在固定显存预算下，如何复用、选择、压缩、检索与分层维护 KV Cache。它与专题一的关系是：专题一决定何时形成或提交关键事件，专题二决定已写入信息以何种 KV 表征保存、压缩与读取。
 
 | 优先级 | 工作 | 在线精读页面 | 关注点 |
 | --- | --- | --- | --- |
