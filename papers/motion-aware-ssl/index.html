@@ -3,76 +3,107 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Motion-Aware SSL｜论文精读</title>
+<title>Motion-Aware Self-Supervision｜专题一 · 历史关键事件检测</title>
 <link rel="stylesheet" href="../../style.css">
 </head>
 <body>
 <header>
 <div class="wrap">
-<div class="eyebrow">P1 · Generic Event Boundary Detection</div>
-<h1>Motion-Aware Self-Supervision</h1>
-<p>用可微运动模块让无标签表征学习面向事件边界</p>
-<nav>
-<a href="../../index.html">← 返回导航</a>
-<a href="../index.html">P1 总览</a>
-</nav>
+<div class="crumb"><a href="../../index.html">VLA 历史记忆</a> / <a href="../index.html">专题一 · 历史关键事件检测</a> / P1-1</div>
+<div class="eyebrow">Paper Deep Read · 表征预训练</div>
+<h1>Motion-Aware Self-Supervision for Generic Event Boundary Detection</h1>
+<p>Ayush K. Rai, Tarun Krishna, Julia Dietlmeier, Kevin McGuinness, Alan F. Smeaton, Noel E. O'Connor · Dublin City University · WACV 2023｜
+<a href="https://arxiv.org/abs/2210.05574">arXiv</a> · <a href="https://openaccess.thecvf.com/content/WACV2023/html/K._Motion_Aware_Self-Supervision_for_Generic_Event_Boundary_Detection_WACV_2023_paper.html">论文页</a> · <a href="https://github.com/rayush7/motion_ssl_gebd">代码</a>
+</p>
 </div>
 </header>
 <main>
+<div class="doc-layout">
+<aside class="doc-side">
+<nav class="sidenav">
+<h4>本页目录</h4>
+<a href="#summary">1 核心摘要</a>
+<a href="#stage">2 事件流水线定位</a>
+<a href="#problem">3 问题与动机</a>
+<a href="#method">4 方法拆解</a>
+<a href="#evidence">5 证据与实验</a>
+<a href="#fit">6 优点、局限与 VLA 适配</a>
+<a href="#repro">7 落地清单</a>
+<div class="side-extra">候选生成的上游供给件：不产出事件，只把编码器改成对帧间位移有反应。</div>
+</nav>
+</aside>
 <article>
-<p class="meta">Ayush K. Rai et al. · Dublin City University · WACV 2023 · <a href="https://openaccess.thecvf.com/content/WACV2023/html/K._Motion_Aware_Self-Supervision_for_Generic_Event_Boundary_Detection_WACV_2023_paper.html">论文</a> · <a href="https://arxiv.org/abs/2210.05574">arXiv</a> · <a href="https://github.com/rayush7/motion_ssl_gebd">代码</a>
-</p>
-<div class="toc">
-<a href="#summary">摘要</a>
-<a href="#motivation">动机</a>
-<a href="#method">方法</a>
-<a href="#results">实验</a>
-<a href="#limits">优劣</a>
-<a href="#takeaway">总结</a>
+<div class="verdict">
+<div class="vt">决策卡</div>
+<p>可借用的是“把位移估计做成可微层、再用无标注视频预训练”这条路，让边界检测器拿到对运动敏感的特征；代价是整条链路非因果，判定候选帧时要用它之后的帧，预训练域也仍是人类活动视频。</p>
+<dl>
+<dt>最小可复用件</dt><dd>插在骨干 <code>conv3_x</code> 之后的 MotionSqueeze 层：相关层加 soft-argmax 出位移图，depthwise 卷积转成运动特征后残差加回主干。</dd>
+<dt>主要风险</dt><dd>非因果中心窗口：微调输入覆盖候选帧前后两侧，在线使用时每个边界都要等一个窗口才能确认。</dd>
+<dt>复现门槛</dt><dd>ResNet-50 级别骨干、无标注视频预训练、带逐帧边界标签的微调集；不需要光流预处理，也不需要离线光流管线。</dd>
+</dl>
 </div>
+
 <h2 id="summary">1. 核心摘要</h2>
-<p>GEBD 不预设动作类别，而是找出人会自然感到“事件已切换”的时刻。本文认为，监督式动作分类表征会被类别标签束缚，复杂的边界网络又不一定真正学到运动；因而从对比式自监督预训练出发，在 ResNet-50 中加入可微 MotionSqueeze 层，再用相邻/远距离片段的对比目标学习时空表征。下游仅以较轻的边界头微调。作者在 Kinetics-GEBD 与 TAPOS 上验证：不设计显式 motion pretext task，也能得到适于边界的运动特征。</p>
-<h2 id="motivation">2. 研究动机</h2>
-<p>人对边界的判断既来自外观突变，也来自动作速度、方向或交互状态改变；这与“把视频归入固定类别”的分类训练目标不同。Kinetics-GEBD 还由多名标注者给出边界，天然包含语义主观性。作者的切入点是：自监督不受动作类别约束，若把运动建模放进编码器本身，表征可以同时覆盖空间与时间多样性。</p>
-<h2 id="method">3. 方法论</h2>
-<img class="figure" src="figures/fig1_architecture.png" alt="论文 Figure 1：两阶段 Motion-Aware SSL 架构">
-<p class="caption">Figure 1。作者 LaTeX 源码 <code>images/main_figure.png</code>：阶段一预训练带 MotionSqueeze 的 ResNet-50，阶段二微调 GEBD。</p>
-<h3>3.1 两阶段训练</h3>
-<p>阶段一将每个视频裁成片段，用 RGB 编码器抽取特征；MotionSqueeze 对相邻特征图做相关性与位移聚合，输出可学习的运动特征，而不是预先计算光流。四个时间采样/对比任务共同约束表示：近邻片段应保持一致、远距离片段应区分，促使模型理解时间变化。阶段二将编码器接入边界预测器，在带边界标签的数据上微调。</p>
-<h3>3.2 对 VLA 的含义</h3>
-<p>它提供的是“运动敏感表征”而非在线写入策略。若用于机器人，可把 gripper、末端位姿或接触信号当作与 MotionSqueeze 并列的运动证据，再由后级决定是否形成可持久化事件。</p>
-<h3>3.3 MotionSqueeze 为什么不同于离线光流</h3>
-<p>MotionSqueeze 位于 ResNet-50 的中间特征图上：它以相邻时刻的局部特征相关性构造位移响应，并以可微操作将这些响应压缩回运动特征图。因此，运动不是先离线算好、再作为一个固定通道拼接；梯度能从最终自监督目标回传到产生运动证据的视觉表征。作者的主张也更克制：模型学习了对 motion 有反应的表征，并非声称恢复了光学流的物理真值。</p>
-<h3>3.4 预训练与下游的接口</h3>
-<p>预训练阶段，修改后的 ResNet-50 从同一视频采样多个片段，以对比式目标拉近语义/时间关系合适的 view、拉开不应混同的片段。下游 GEBD 微调时，编码器输出成为边界分类器的输入。也就是说，标签只在第二阶段用于边界判别；作者没有将无标签预训练直接当作可部署的边界 detector。这个区分对于把该方法迁移到机器人数据很重要：无标签轨迹可先训练表征，少量事件标注再校准阈值与头部。</p>
-<h2 id="results">4. 实验与结果</h2>
-<p>作者在 Kinetics-GEBD 与 TAPOS 上按 Rel.Dis 阈值报告 F1（论文 Table 1、2），并以同一评测比较自监督基线。核心结论是加入可微运动层的自监督方案优于文中比较的其他自监督方法；论文也以定性图展示其预测边界更接近标注。本文不重绘实验图，以免把结果图当作方法图。</p>
+<p>GEBD 要在不预设类别的前提下找出人自然感到“事件切换”的时刻。既有方案一类靠动作分类预训练的骨干加边界头，特征被类别标签牵制；一类堆叠多尺度、级联或集成结构，把指标推高却说不清特征里有没有运动。作者的判断是问题在表征层：编码器若对帧间位移不敏感，后级再复杂也只能在静态外观上判别。做法是把可微的 MotionSqueeze 插进 ResNet-50 的 <code>conv3_x</code> 之后，在 MoCo 风格框架下用四项判别任务预训练——帧内与帧间实例判别、片段级实例判别、片段顺序正则；位移估计全程可微，梯度能回到运动分支，因此无需显式运动 pretext task。下游只加一个二分类头，在 Kinetics-GEBD 与 TAPOS 上微调。判定是：这是候选生成的上游供给件，本身不产生事件，价值在于让后续检测器对边界更敏感。</p>
+
+<h2 id="stage">2. 事件流水线定位</h2>
+<div class="flowline">
+<span class="on">候选生成</span><span>语义确认</span><span>边界定位</span><span>记忆写入</span><span>检索</span><span>评测</span>
+</div>
+<p>严格说它在候选生成的<b>上游</b>：交付物是预训练编码器加逐帧二分类头，输出“这一帧是不是边界”，不给区间，也不给类别。它改变的是更靠底层的事——特征空间里帧间位移是否可读。上游假设能离线拿到整段视频做预训练；下游假设是换掉骨干权重、保留自己的判定逻辑，就能吃到这份运动敏感性。</p>
 <table>
-<tr>
-<th>证据</th>
-<th>原文结论</th>
-<th>解读</th>
-</tr>
-<tr>
-<td>Table 1/2</td>
-<td>同时在 Kinetics-GEBD、TAPOS 上评估 F1</td>
-<td>避免只在单一视频域证明 motion 学习有效。</td>
-</tr>
-<tr>
-<td>Table 3</td>
-<td>对 MotionSqueeze 与训练设置做消融</td>
-<td>性能归因于可学习运动模块，而非单纯换用 SSL。</td>
-</tr>
+<tr><th>项</th><th>内容</th></tr>
+<tr><td>输入</td><td>预训练：视频内随机帧与随机片段，无标注。微调：以候选帧为中心、前后各 <code>W=5</code> 个采样点、步长 <code>m=3</code> 的 10 帧窗口</td></tr>
+<tr><td>输出</td><td>每个候选帧一个边界概率；经阈值与时间窗聚合后得到离散时刻，无区间、无类别</td></tr>
+<tr><td>交给下游</td><td>一个对运动敏感、可直接微调的 ResNet-50 权重，以及“前后上下文各自池化再拼接”的极轻边界头</td></tr>
 </table>
-<h3>4.1 实验边界</h3>
-<p>两套数据使用的是“相对距离容忍阈值下的 F1”，不同阈值反映预测点离人工边界多远仍算匹配。故应看完整阈值曲线/表格的趋势，而不是挑一个阈值宣称通用胜利。Table 3 的组件消融更适合回答本文方法问题：若移除 motion-aware 设计，性能下降，说明并非仅由 SSL 名称带来收益。论文未报告机器人控制成功率、固定 memory budget 下的 recall 或在线延迟，不能由 GEBD F1 直接推断这些指标。</p>
-<h2 id="limits">5. 优势与局限</h2>
-<p>
-<b>优势：</b>不依赖预计算光流；训练时不需运动专用伪任务；输出可作为通用边界候选器。<br>
-<b>局限：</b>最终边界微调仍需要 GEBD 标注；论文验证的是离线视频边界，并未处理严格流式提交、历史记忆预算或机器人状态。</p>
-<h2 id="takeaway">6. 总结</h2>
-<p>最值得借鉴的是把“运动”做成可端到端学习的表征组件，而不是固定前处理。对 VLA，适合作为低层候选信号；是否写入长期记忆仍应由语义确认和任务状态共同决定。</p>
+
+<h2 id="problem">3. 问题与动机</h2>
+<p>前人方法的失效模式很具体。<b>监督式分类骨干</b>（论文以 PC 为代表）把动作分类的判别方向原样搬来做边界二分类，而边界的判据往往正交于类别：杯口从空到满、夹爪从开到合，画面变化很大但类别标签不变，特征在这一方向上没有被人为拉开。</p>
+<p><b>显式运动方法</b>的问题不在精度而在接口。光流通常在像素域离线算好，不参与优化：编码器与算子各自为政，光流在弱纹理、快速平移、遮挡处的误差无法被训练修正，管线也没法端到端调，改进只能换更强的光流模型。</p>
+<p><b>复杂管线</b>把指标做高了，但回答的是“如何组合已有信号”，没回答“信号里有没有运动”，换域时没有可借力的表征基础。<b>朴素自监督</b>同样不够：把每帧或每段当实例做判别，学到的多是场景身份与静态外观，相机缓慢平移或物体被逐渐移出视野时，相邻帧在特征上几乎重合，慢变状态推进与自运动难以区分。作者要的是既无类别偏置、又对帧间位移有反应的表征。</p>
+
+<h2 id="method">4. 方法拆解</h2>
+<img class="figure" src="figures/fig1_architecture.png" alt="论文图 1：左侧为带 MotionSqueeze 的 ResNet-50 在四项判别任务上预训练，右侧为以候选帧前后上下文拼接后做边界二分类的微调阶段">
+<p class="caption">图 1，WACV 2023 论文原图：Stage 1 有帧级（Intra/Inter Frame ID）与片段级（Video Segment ID、Temporal Order Reg.）四个投影头；Stage 2 以候选帧两侧上下文做边界二分类。</p>
+<h3>4.1 输入与时间表征</h3>
+<p>预训练同时喂两路输入，共享 ResNet-50 但用途不同。帧级分支取三帧、单帧 <code>3×224×224</code>；片段级分支把视频划成 <code>K=3</code> 段等长区间，每段采两个 4 帧片段，张量 <code>(K,4,3,224,224)</code>。<b>MotionSqueeze 只挂在片段级分支上</b>，帧级分支保持纯 2D，空间多样性与时间多样性因此由两路分担。骨干在残差块内插 TSM 近似时序建模，MotionSqueeze 落在 <code>conv3_x</code> 之后、约 <code>28×28</code> 处：再低丢局部位移，再高则相关层开销陡增。</p>
+<h3>4.2 关键机制</h3>
+<p><b>三步位移估计。</b>对相邻特征图 <code>F(t)</code>、<code>F(t+1)</code>，先在最大位移 <code>[-l,l]</code>、邻域 <code>P=2l+1</code> 内算相关张量；再用 kernel soft-argmax 压成 <code>H×W×2</code> 位移图，同时池化最大相关得到 <code>H×W×1</code> 置信图，拼成 3 通道；最后经四个 depthwise separable 卷积映射为同通道运动特征 <code>M(t)</code>，以 <code>F'(t)=F(t)+M(t)</code> 残差写回主干。</p>
+<p><b>可微性是关键。</b>相关层、soft-argmax、深度可分离卷积全部可导，对比损失的梯度能回到“位移是怎么估出来的”。换成离线光流，位移在进网络前就冻结，算子不会随任务调整；位移一旦可微，编码器就有动机把它调到对判别有用的精度。作者没有声称恢复真实光流，优化的是“哪部分位移对区分时间序列有用”。</p>
+<p><b>代理任务是判别式而非生成式：没有帧预测、重建或解码器。</b>四项损失等权相加，共享 MoCo-V2 风格的 InfoNCE。<code>L_Intra</code> 以同帧两种增强为正样本、负样本取<b>同一视频内的其他帧</b>，迫使同视频不同时刻可区分；<code>L_Inter</code> 把同视频相邻帧都当正样本、负样本来自其他视频，保留连贯动作内的细粒度时间结构；<code>L_Segment</code> 对每个 clip 的帧特征取平均得片段嵌入，按片段做实例判别；<code>L_Order</code> 打乱片段顺序后要求判别原序。顺序判别是运动特征被间接监督的入口：判断先后，稳定线索只有帧间位移，而 MotionSqueeze 正好提供了可微的位移通路。</p>
+<h3>4.3 输出与在线边界</h3>
+<p><b>预训练与下游的接口很窄。</b>微调时把含 MotionSqueeze 的 ResNet-50 整体接上：10 帧窗口（两侧各 <code>W=5</code> 个采样点、步长 <code>m=3</code>）按候选帧切成 pre/post 两段 <code>(W,2048,7,7)</code>，各自池化成 2048 维、拼接为 4096 维后过一层二分类器，损失为 BCE；标签经高斯平滑成软标签，吸收多标注者的容忍差异。</p>
+<p><b>在线设定：该方法非因果。</b>微调输入覆盖候选帧<b>前后两侧</b>，判定第 <code>t</code> 帧时已读到其后的帧；预训练也从整段视频随机取帧与片段。历史长度为两侧各 5 个采样点、间隔 3 帧。论文未给单侧窗口、流式推理或延迟数据，在线可用性未在已核验的公开材料中确认。延迟来源因此不是网络前向，而是“必须等右侧帧到齐”。</p>
+
+<h2 id="evidence">5. 证据与实验</h2>
+<p>实验用两个数据集：Kinetics-GEBD 做预训练与微调，TAPOS 只做微调以检验跨域。指标为 F1，按 Rel.Dis 阈值 0.05 至 0.5、步长 0.05 报告并给平均值，概率低于 0.5 的提案不计入。表 1、表 2 是横向对比，表 3 是组件消融，逐级加入片段级改造、MotionSqueeze 与软标签。</p>
+<p><b>“边界敏感”被三种方式验证，都不是空口宣称。</b>其一是消融：表 3 中从 VCLR 到加入 MotionSqueeze 的一步增益最大，其上再加软标签提升较小，说明收益归因于可学习的运动模块，而非“换了自监督”的名头。其二是冻结编码器的线性评估：论文写到线性评估在 GEBD 上表现很差、必须端到端微调，这条负面结果支持“增益来自表征可被重塑”而非线性可分性变好；论文只给结论，未报告数值。其三是图 3 的运动置信度可视化：模型<b>只在 Kinetics-GEBD 上预训练</b>，置信图在未参与预训练的 TAPOS 片段上仍落在运动区域，作者据此论证 MotionSqueeze 学到的是通用运动特征。</p>
+<p><b>与监督训练的对比是受控的</b>：同一 ResNet-50 骨干、同一输入构造、同一指标下的 Supervised PC 基线；与自监督 SOTA 的比较受各自输入形式影响，不算严格受控。具体 F1 数值本页不复述（底稿未核验到小数位），需要精确排名请查原文表 1 至表 3；单帧延迟、预训练算力与机器人数据上的迁移结果同样未在已核验的公开材料中确认。论文自陈的局限是：MotionSqueeze 作用于特征图，学到的是<b>全局运动</b>，而 GEBD 中并非所有运动都对应边界。</p>
+
+<h2 id="fit">6. 优点、局限与 VLA 适配</h2>
+<div class="duo">
+<div><h4>可迁移</h4><p>MotionSqueeze 与骨干解耦：中间层只要还是 <code>H×W×C</code>，就能插在任意 2D 骨干的某个 stage 后。四项判别任务不需标注，机器人自采长视频可直接预训练。下游“两侧上下文各自池化再拼接”的头极轻，输出是概率而非区间，正好匹配“要不要在此刻写一条记忆”这个二元决策。</p></div>
+<div><h4>不成立的前提</h4><p>边界标签来自人观看视频的感知，VLA 关心的是任务状态是否转移，两者在“缓慢接近但尚未接触”这类片段上答案不同。预训练域是 Kinetics 人类活动，视角接近人眼、相机稳定；腕部相机则是近景、强自运动、弱纹理、频繁遮挡，全局位移会压过抓取这类局部毫米级变化。</p></div>
+</div>
+<p><b>预训练成本要先算清。</b>MoCo 风格训练需要大 batch、负样本队列与动量编码器，加上片段级多 clip 采样，吞吐远高于普通监督训练；论文受算力限制只在 Kinetics-GEBD 上预训练。对机器人团队更现实的问题是：值不值得为边界重训编码器？若本体已能以远高于视频帧率的频率给出关节角、夹爪开合与接触力，“运动”在最需要的尺度上就有更便宜更准的测量，从像素重建运动的边际收益主要落在抑制自运动伪运动、捕捉接触前兆这两件事上。</p>
+<p><b>次序应是先门控、后重训。</b>用现成权重跑一遍自有数据，把本体信号（夹爪跳变、力突变、末端速度过零）当门控，只在门控打开时让视觉概率参与判断；若漏检主要来自腕部视角伪运动，再重训，且优先只训 MotionSqueeze 与头部、冻结骨干。延迟上，MotionSqueeze 的开销集中在 <code>28×28</code> 相关层，真正的问题是右侧未来帧；最小改造是保留双侧窗口但只用于离线整理历史，在线候选仍由本体信号触发。</p>
+
+<h2 id="repro">7. 落地清单</h2>
+<ul class="checklist">
+<li>冻结官方权重，在自有机器人视频上以 <code>W=5</code>、<code>m=3</code> 复现微调与推理，先把预测时刻与人工标注对齐，量出域差异再决定是否投入预训练。</li>
+<li>把 MotionSqueeze 插到自研 2D 骨干的 <code>conv3</code> 之后，只训该模块与边界头，对比“有/无该层”的 F1 与伪运动误检率。</li>
+<li>复现四项判别损失时保持等权，并单独记录每项损失曲线，确认顺序正则确实是运动分支获得监督的来源。</li>
+<li>接入本体信号门控：仅在夹爪开合与力突变窗口内放行视觉边界概率，并把“本体触发但视觉否决”的样本单独留存做误差分析。</li>
+<li>把中心窗口改为单侧 <code>[t−2W, t]</code> 重训一版，记录边界真实时刻与确认时刻之差，作为记忆写入延迟指标上报。</li>
+</ul>
+<div class="srcbox">
+<p><b>来源：</b>arXiv abs 页 <a href="https://arxiv.org/abs/2210.05574">arXiv:2210.05574</a>（v2，2022-10-12，WACV 2023）；CVF 论文页 <a href="https://openaccess.thecvf.com/content/WACV2023/html/K._Motion_Aware_Self-Supervision_for_Generic_Event_Boundary_Detection_WACV_2023_paper.html">WACV 2023 open access</a>；官方代码 <a href="https://github.com/rayush7/motion_ssl_gebd">rayush7/motion_ssl_gebd</a>。机制描述对应原文第 3、4 节与图 1，可视化对应图 3，消融对应表 3，横向对比对应表 1、表 2。</p>
+<p><b>图像说明：</b>页面图片 <code>figures/fig1_architecture.png</code> 为作者论文图 1 的 PNG 渲染，展示预训练与微调两阶段结构。</p>
+</div>
+<p class="pagefoot">相关页面：<a href="../flowgebd/index.html">FlowGEBD · 低成本候选生成</a> · <a href="../oat/index.html">OAT · 在线 proposal</a> · <a href="../../index.html">返回总站</a></p>
 </article>
+</div>
 </main>
 </body>
 </html>

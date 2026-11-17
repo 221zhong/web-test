@@ -1,2 +1,122 @@
 <!doctype html>
-<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Ego4D Episodic Memory｜P2 论文精读</title><link rel="stylesheet" href="../../style.css"></head><body><header><div class="wrap"><div class="eyebrow">P2 · Benchmark / Evaluation Protocol</div><h1>Ego4D Episodic Memory</h1><p>把“过去看见过什么”变成可检索、可量化的第一视角记忆评测</p><nav><a href="../../index.html">← 返回导航</a><a href="../index.html">P1 / P2 总览</a></nav></div></header><main><article><p class="meta">Kristen Grauman et al.（Ego4D Consortium）· CVPR 2022 · <a href="https://arxiv.org/abs/2110.07058">arXiv</a> · <a href="https://ego4d-data.org/docs/benchmarks/episodic-memory/">官方基准文档</a> · <a href="https://github.com/EGO4D/episodic-memory">评测代码</a></p><div class="toc"><a href="#summary">摘要</a><a href="#motivation">动机</a><a href="#method">任务与协议</a><a href="#results">基线与结果</a><a href="#limits">优劣</a><a href="#takeaway">总结</a></div><h2 id="summary">1. 核心摘要</h2><p>Ego4D 的 Episodic Memory（EM）不是一个新的 memory 网络，而是一套面向第一视角长视频的“历史能否被找回”基准。给定过去视频与一个查询，系统必须定位答案可见或可推断的时间区间；查询可为自然语言、物体图像或高层活动名称。它将 VLA 历史记忆中最容易被忽略的一环外显为可测任务：写入的内容是否能在未来被正确检索，而不只是边界检测是否好看。官方文档汇总约 7.4 万个查询、覆盖约 800 小时视频，并把 NLQ、VQ、MQ 分开定义和评测。</p><h2 id="motivation">2. 研究动机</h2><h3>2.1 第一视角“记住”不是视频分类</h3><p>一个可穿戴或机器人助手面对的是连续生活流：用户问“我把钥匙最后放在哪里？”，答案依赖过去某个短暂出现、随后可能离开视野的物体。单帧识别只能回答当前有什么；离线动作分类又预设类别，无法覆盖开放式对象、自由语言问题和长时程回溯。EM 因而把目标设为 <b>在个人历史中定位证据</b>，而不是对整段视频给一个标签。</p><h3>2.2 三种查询对应三种失败模式</h3><p>自然语言查询（NLQ）考察文本是否能对齐到正确时间窗口；视觉查询（VQ）考察物体最后一次出现能否被时间和空间共同找回；时刻查询（MQ）则要求找出某高层活动的所有出现区间。它们分别暴露语义匹配、跨时跟踪/重新定位、重复事件枚举的困难。对记忆系统而言，只做其中一种都不足以证明“历史可用”。</p><h2 id="method">3. 任务与协议</h2><img class="figure" src="figures/fig_episodic_queries.jpg" alt="Ego4D Figure: Episodic Memory 三类查询"><p class="caption">原论文 Figure 6（作者 arXiv LaTeX 源码 <code>figures/episodic-queries.jpg</code>）：Episodic Memory 的三类查询。该图为任务/机制图，不是实验结果图。</p><h3>3.1 输入、输出和时间方向</h3><p>对任一查询，输入是第一视角视频历史和 query；输出不是一句答案文本，而是答案证据所在的 temporal window。系统可以在离线基准中检索完整历史；因此 EM 本身不强制流式因果性。把它用于 VLA 时，应额外区分：查询发生时可访问哪些已提交 memory，检索是否允许回读原始视频，以及索引何时更新——这些是本基准提出问题、但没有替代实现的系统设计。</p><h3>3.2 NLQ：语言到证据区间</h3><p>NLQ 给定自由文本问题，例如“我把什么放进抽屉？”，模型返回一个或多个起止时间。标注者围绕 13 类记忆问题模板写出自然语言，并标注答案可见或可推断的响应窗口。核心度量是 Recall@K 在 tIoU 阈值下的命中率：候选前 K 条中只要有一段与真值 overlap 足够，就算检索到。它同时惩罚语义错配与粗糙的时间定位。</p><h3>3.3 VQ：最后一次看到的物体</h3><p>VQ 的 query 是物体裁剪图。系统应在 query frame 之前找到该物体最近一次出现的 response track：既要定位发生时间，又要逐帧给出 2D box；部分数据还要求利用相机位姿、深度和 3D mesh 预测相对当前相机的 3D 位移/位置。原论文 baseline 的管线是：全历史逐帧 region proposal → Siamese 相似度检索 → 在临近 query 的最高峰确定最近出现 → 向前/向后 tracker 恢复连续轨迹。这里“最近一次”使任务不同于常规 object retrieval。</p><h3>3.4 MQ：活动名称到所有实例</h3><p>MQ 输入高层 moment 名称，输出视频内所有该活动区间；官方文档说明 taxonomy 有 110 类，来自 narration 的数据驱动、半自动整理。它按 temporal action detection 的 mAP@tIoU 与 recall 协议评测。对 VLA 而言，MQ 最接近“检索所有曾经发生过的子任务/状态”，而 NLQ 更接近语言驱动的单次回忆。</p><h3>3.5 数据与标注设计</h3><p>整个 Ego4D 数据集为 3,670 小时、931 位佩戴者、74 个地点、9 个国家的日常第一视角视频；EM 只是其中以“过去”为中心的一组任务。标注包含自由语言、response window/track、活动时间段；VQ 的部分样本附有 Matterport3D 场景扫描。论文和官方文档均强调地理、场景和佩戴者多样性，但这不等于覆盖所有机器人视角、传感器和操作域。</p><h2 id="results">4. 基线与结果</h2><h3>4.1 评测不把三类任务混成单分数</h3><table><tr><th>子任务</th><th>原文 baseline 机制</th><th>主要指标</th><th>它检验的 memory 能力</th></tr><tr><td>NLQ</td><td>视频—文本时序定位模型（论文比较 VSLNet 等）</td><td>R@K, tIoU</td><td>文本能否找对历史证据区间</td></tr><tr><td>VQ2D / VQ3D</td><td>proposal + Siamese matching + peak + tracker</td><td>时空 track / 3D 定位指标</td><td>最后一次物体出现的时空可回忆性</td></tr><tr><td>MQ</td><td>时序动作检测器</td><td>mAP@tIoU、Recall</td><td>是否检索到所有高层活动实例</td></tr></table><p>原文结果的目的主要是建立难度基线，而不是宣布一个统一 SOTA：论文显示 NLQ 的 VSLNet 在 R@1、tIoU=0.3 下仅 5.47%，VQ2D baseline 的 2D success 约 40% 量级，说明在长视频中“针落在哪里”的检索仍远未解决。不同子任务的分数不能互相比较，因为输出结构和指标不同。</p><h3>4.2 结果对关键事件系统意味着什么</h3><p>若一个系统只报告 boundary F1，它还没说明被写入的事件能否回答语言问题、重找物体或枚举一类活动。更完整的 VLA 评测至少应同时报告：(1) 固定 memory budget 下关键事件的 Recall@K；(2) 查询到正确事件的 tIoU / 成功率；(3) 写入延迟与检索延迟；(4) 被检索记忆是否改善后续控制。这四项与 EM 的任务族一一呼应，但机器人动作和状态应有自己的标注与成功判据。</p><h2 id="limits">5. 优势与局限</h2><h3>优势</h3><p>第一，它将“记忆”落到可验证的历史定位，而不是抽象 embedding。第二，NLQ/VQ/MQ 覆盖语言、对象、活动三种查询接口。第三，VQ 的 2D/3D 扩展让历史记忆不仅回答“什么时候”，还能回答“在哪里”。第四，长、杂乱的第一视角日常视频比短剪辑更接近真实历史缓存的干扰。</p><h3>局限</h3><p>它是数据与评测基准，不给出通用 memory writer、压缩策略或在线提交算法；不能把某个 EM 分数直接解释为 VLA 控制收益。离线历史检索与严格流式系统不同，现实部署还要计算索引更新、隐私、删除和错误写入成本。最后，基准中的人类第一视角、语言叙述与机器人相机/动作状态存在域差异；将它作为评测灵感时应明确新增的状态与接触证据，而非声称可直接迁移。</p><h2 id="takeaway">6. 总结</h2><p>Ego4D EM 最有价值的贡献是把“过去是否可用”拆成三个可检验问题：语言能否命中证据、物体能否被重定位、活动能否被完整枚举。P0/P1 的方法大多回答“何时形成候选、存什么、怎样保留历史”；P2 则提供末端验收标准——未来查询能否真正从有限历史中找回对任务有用的事件。</p></article></main></body></html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Ego4D Episodic Memory｜专题一 · 历史关键事件检测</title>
+<link rel="stylesheet" href="../../style.css">
+</head>
+<body>
+<header>
+<div class="wrap">
+<div class="crumb"><a href="../../index.html">VLA 历史记忆</a> / <a href="../index.html">专题一 · 历史关键事件检测</a> / P2-1</div>
+<div class="eyebrow">Paper Deep Read · 记忆评测基准</div>
+<h1>Ego4D Episodic Memory：Ego4D 论文中的记忆基准组</h1>
+<p>Kristen Grauman 等（Ego4D Consortium）· CVPR 2022｜
+<a href="https://arxiv.org/abs/2110.07058">arXiv</a> · <a href="https://openaccess.thecvf.com/content/CVPR2022/html/Grauman_Ego4D_Around_the_World_in_3000_Hours_of_Egocentric_Video_CVPR_2022_paper.html">论文页</a> · <a href="https://github.com/EGO4D/episodic-memory">代码</a>
+</p>
+</div>
+</header>
+<main>
+<div class="doc-layout">
+<aside class="doc-side">
+<nav class="sidenav">
+<h4>本页目录</h4>
+<a href="#summary">1 核心摘要</a>
+<a href="#stage">2 事件流水线定位</a>
+<a href="#problem">3 问题与动机</a>
+<a href="#method">4 方法拆解</a>
+<a href="#evidence">5 证据与实验</a>
+<a href="#fit">6 优点、局限与 VLA 适配</a>
+<a href="#repro">7 落地清单</a>
+<div class="side-extra">P2 的验收标准：写入的历史能否被未来查询找回</div>
+</nav>
+</aside>
+<article>
+<div class="verdict">
+<div class="vt">决策卡</div>
+<p>EM 不提供记忆模块，只提供一套「历史能否被未来查询命中」的验收协议；可以直接借标注格式与指标，但不能把它的分数当作 VLA 控制收益。</p>
+<dl>
+<dt>最小可复用件</dt><dd>NLQ 的 <code>response window</code> 加 VQ 的 <code>response track</code> 标注格式：把证据标成起止时间与逐帧框，而不是一句答案。</dd>
+<dt>主要风险</dt><dd>离线全历史检索加人类语言叙述，与严格流式、无回忆式 query 的机器人控制之间差了两层。</dd>
+<dt>复现门槛</dt><dd>800 小时级第一视角视频与人工区间标注；自建小规模也要逐段标起止，并覆盖语言、物体、活动三类查询。</dd>
+</dl>
+</div>
+
+<h2 id="summary">1. 核心摘要</h2>
+<p>Episodic Memory（EM）是 Ego4D 论文中面向「过去」的一组基准，不是新的记忆网络。它给定第一视角视频历史和一条查询，要求系统输出答案所在的证据区间：自然语言查询（NLQ）输出时间窗，视觉查询（VQ）输出物体最后一次出现的时间与框，片段查询（MQ）输出某类活动的全部实例。官方文档给出约 7.4 万条查询、覆盖约 800 小时视频。它的贡献是把「记忆写进去是否有效」变成可测的检索命中率，为 P0/P1 的写入与压缩方法提供末端验收；但它只规定问什么、怎么算命中，不规定记忆如何组织、如何压缩、如何在流式约束下更新。判定：可借其标注协议与指标设计 VLA 记忆评测，不能把它的分数当作控制收益或架构证据。</p>
+
+<h2 id="stage">2. 事件流水线定位</h2>
+<div class="flowline">
+<span>候选生成</span><span>语义确认</span><span>边界定位</span><span>记忆写入</span><span>检索</span><span class="on">评测</span>
+</div>
+<p>EM 落在「评测」这一环。它假定候选生成、语义确认、边界定位、记忆写入、检索都已由上游系统完成，自己只定义查询接口与命中判据；对上游的唯一假设是历史能被按时间访问并返回区间。它检验的不是边界是否贴合动作起止，而是<b>写入的历史能否被未来查询找回</b>：如果一条记忆在写入时丢了物体身份、时间戳或证据帧，再好的定位头也无法在 NLQ 或 VQ 上得分。</p>
+<table>
+<tr><th>环节</th><th>内容</th></tr>
+<tr><td>输入</td><td>第一视角视频历史，加一条文本、物体裁剪图或活动名查询</td></tr>
+<tr><td>输出</td><td>证据时间窗、response track（含 2D 框，可选 3D 位移）、或某类活动的全部区间</td></tr>
+<tr><td>交给下游</td><td>可比较的命中率与定位分数，以及「起止时间 + 证据帧」的标注格式，用来校准写入与检索策略</td></tr>
+</table>
+
+<h2 id="problem">3. 问题与动机</h2>
+<p>在 EM 之前，第一视角视频的理解任务各有输出接口，却没有一个直接回答「这段历史里哪一段是证据」。视频问答返回一句文本，无法指向时间；动作分类预设闭集类别，遇到「我把钥匙放哪了」这类开放式对象问题无处输出；物体重识别只在单帧上比外观，不处理物体离开视野后又被移动的情况。失效条件很具体：答案只出现几秒、随后被遮挡或搬走、查询发生在几十分钟之后，系统既没有索引也没有回读机制。</p>
+<p>EM 把回忆改写成定位：答案必须落在一个由标注者确定的区间上，评分只看这个区间是否被命中。它还显式建模检索成本：VQ 的 timeliness 与 search efficiency 指标奖励快速搜索，因为长视频里逐帧扫描的代价本身就是系统缺陷，而不是实现细节。标注也围绕同一目标设计。NLQ 用 13 类模板问题（如「did I leave the window open?」）扩展出自由语言，并记录槽位填充；MQ 的 110 类活动是从 narration 摘要里半自动挖出的，不是先验本体。两者都让查询分布贴近「人会问什么」，而不是「模型容易分类什么」。</p>
+
+<h2 id="method">4. 方法拆解</h2>
+<img class="figure" src="figures/fig_episodic_queries.jpg" alt="Ego4D Episodic Memory 的三类查询示意：物体图查询、语言查询与活动片段查询分别对应视频时间轴上的不同区间">
+<p class="caption">原论文 Figure 7（Episodic Memory 的三类查询）：视觉查询给物体图像，语言查询给一句问句，片段查询给活动名称；三条时间轴分别标出期望返回的证据区间。该图为任务示意，不是实验结果图。</p>
+<h3>4.1 输入与时间表征</h3>
+<p>三类查询输入不同，都不对视频做预切割。NLQ 的输入是完整历史加一句自由语言，标注是答案可见或可推断的 <code>response window</code>；VQ 的输入是历史、query frame 和一张物体裁剪图，标注是 <code>response track</code>，即该物体最后一次出现期间的逐帧框；MQ 的输入是历史加一个活动名，标注是该活动在片段内的所有区间。NLQ 与 MQ 的时间单位是秒级起止，VQ 是帧级轨迹，三者不共享同一时间容差。原文未给出统一的标注误差容限，未在已核验的公开材料中确认。</p>
+<h3>4.2 关键机制</h3>
+<p>三类任务共用「先在历史中排序候选，再把候选扩展成区间」的外框，差异集中在命中判据。NLQ 用 top-k recall：返回的前 K 个窗口中只要有一个与真值的 <code>tIoU</code> 超过阈值就算命中，原文报告 0.3 与 0.5 两档。K 与 tIoU 是两个独立旋钮，<code>R@1@0.3</code> 衡量第一名是否大致对，<code>R@5@0.5</code> 衡量前五名里有没有精确解，只报一个数会掩盖排序错误与边界粗糙的区别。</p>
+<p>MQ 用时序动作检测的 <code>mAP@tIoU</code>（0.1 到 0.5）加 <code>recall@kx</code>，要求同一类活动的多个实例都被检出，重复检出不重复计分。VQ 的指标最复杂：<code>Succ</code> 要求时间 IoU 与框 IoU 同时达标，<code>tAP</code> 与 <code>tAP25</code> 看时间定位，<code>stAP</code> 与 <code>stAP25</code> 把时间与空间一起算，<code>recovery</code> 看轨迹是否覆盖完整出现段，<code>search efficiency</code> 看扫描了多少帧。这套指标承认「找回物体」包含三个可分离的能力：认出它、定位它出现的时段、在时段内持续跟踪。</p>
+<p>原文 baseline 在三种查询上分别是 VSLNet、Siam-RCNN 加 KYS、VSGN；VQ3D 再加相机位姿与 DPT 深度。它们只用于建立难度，不是论文提出的网络结构。</p>
+<h3>4.3 输出与在线边界</h3>
+<p>输出是区间或轨迹，不是自然语言答案。系统不需要说出「钥匙在厨房台面」，只需要指出证据在哪一段、哪个框。输出空间被压缩，评分可完全自动化。</p>
+<p>在线设定需要分开说。查询只关于过去，因此不允许使用 query 之后的帧；但基准允许访问 query 之前的全部历史，并允许在 query 到来后反复回读、重排序。这是<b>离线检索</b>，不是因果流式。延迟主要来自对长历史逐帧做 proposal 与相似度计算：原文多数 VQ2D baseline 的 search efficiency 为 0%，即扫描了搜索窗内每一帧；改用「只搜最近 k% 帧」可以把 efficiency 提到 48.0%，代价是 6 到 16% 的相对性能下降，继续降到 10% 则下降 38 到 60%。这说明时间局部性可以利用，但不是免费的。对 VLA 的直接影响是：如果记忆写入是流式的，检索必须限制在已提交的条目上，且不能假设可以回头重扫原始视频；这两条约束 EM 没有施加，需要自己补。</p>
+
+<h2 id="evidence">5. 证据与实验</h2>
+<p>Ego4D 总量为 3,670 小时、931 位佩戴者、74 个地点、9 个国家（论文摘要）。EM 部分约 7.4 万条查询、800 小时视频，NLQ 有 13 类模板，MQ 有 110 类活动（第 5.1 节与官方基准文档）。</p>
+<table>
+<tr><th>子任务</th><th>原文 baseline 机制</th><th>主要指标</th><th>检验的记忆能力</th></tr>
+<tr><td>NLQ</td><td>VSLNet：SlowFast 视频特征加 BERT 文本特征，span 式时序定位；另比 2D-TAN</td><td>R@K at tIoU 阈值（0.3 / 0.5）</td><td>语言查询能否命中历史证据区间</td></tr>
+<tr><td>VQ2D / VQ3D</td><td>Siam-RCNN 加 KYS tracker：全帧 proposal、相似度峰值定位、前后向跟踪；3D 另加相机位姿与 DPT 深度</td><td>Succ、tAP/tAP25、stAP/stAP25、recovery、search efficiency</td><td>物体最后一次出现的时空可回忆性</td></tr>
+<tr><td>MQ</td><td>VSGN 时序动作检测，按查询类别过滤输出</td><td>mAP@tIoU（0.1 到 0.5）、recall@kx</td><td>能否完整枚举同一类活动的所有实例</td></tr>
+</table>
+<p>数字只应作为难度基线读。NLQ 在 test 上 VSLNet 的 R@1@tIoU=0.3 为 5.47%，2D-TAN 为 5.80%（Table 11）；VQ2D 在 test 上最好的 baseline（Siam-RCNN + KYS + 残差投影）Succ 为 41.6%，val 为 39.8%（Table 9）；MQ 在 test 上 mAP 平均 5.68%，tIoU=0.1 时 8.61%（Table 12）。VQ3D 的瓶颈被原文点名为相机位姿覆盖：只有约 15% 的帧能估出位姿，成功率因此很低（附录 F）。这些数字不能横向比较，因为容差与输出结构不同。</p>
+<p>原文错误分析给出两个有用观察：MQ 的 false positive 同时来自定位错误与分类错误（Figure 35），说明「检索到相近但不正确的事件」和「时间偏了」是两类独立失败；短时长 moment 的性能明显更低（Figure 36），意味着按固定频率采样会系统性漏掉短事件。</p>
+<table>
+<tr><th>EM 的指标</th><th>VLA 记忆评测应报告什么</th></tr>
+<tr><td>NLQ 的 R@K at tIoU</td><td>关键事件的 Recall@K，并写清 K、tIoU 阈值与可访问的历史长度</td></tr>
+<tr><td>VQ 的 Succ 与 stAP</td><td>查询目标最后一次出现的时间命中 tIoU，加空间命中（框或区域），不要只报时间</td></tr>
+<tr><td>MQ 的 mAP 与 recall@kx</td><td>同类事件（同一子任务、同一失败模式）是否被完整枚举，而不是只命中一个实例</td></tr>
+<tr><td>search efficiency 与 timeliness</td><td>写入延迟、索引更新时间、查询到返回 top-K 的 p50/p95，以及扫描帧比例</td></tr>
+<tr><td>EM 没有这一项</td><td>记忆是否改善控制：memory on/off 的任务成功率、干预次数、完成时间</td></tr>
+</table>
+<p>最后一张表是分析，不是论文结论。EM 自身没有「记忆是否改善控制」这一项，因为它的输出止于证据区间；VLA 必须自己补上闭环指标。</p>
+
+<h2 id="fit">6. 优点、局限与 VLA 适配</h2>
+<div class="duo">
+<div><h4>可迁移</h4><p><code>response track</code> 的标注格式最值得直接借用：把证据标成起止时间加逐帧框，而不是给一句答案，这样写入端与检索端共享同一套可验证的监督。三类查询接口覆盖语言、物体、活动，可以作为 VLA 记忆评测的最小查询集；R@K 与 tIoU 解耦的报告方式能区分排序错误与边界误差；search efficiency 把检索成本写进指标。</p></div>
+<div><h4>不成立的前提</h4><p>人类第一视角与机器人相机不同：安装高度、视场、运动模糊、遮挡模式都会改变「最后一次看见」的统计。语言叙述假设用户会主动提问，而 VLA 的任务指令通常不是回忆式 query。视频里没有动作状态、接触力、本体感受，EM 的「证据」只是可见像素，无法验证「我是否真的抓过这个物体」。离线全历史检索允许 query 后回读并重排序，严格流式系统不成立；标注者的「可推断」判断也不等于任务成功判据。</p></div>
+</div>
+<p>延迟风险集中在检索端。VQ2D baseline 全帧扫描时 search efficiency 为 0%，即使只搜最近一半帧也要付出 6 到 16% 的性能代价；把这种检索直接放进控制回路，单次查询会跨过多个控制周期。最小改造是两层索引：写入时给每条记忆打时间戳、物体或区域标签与语言摘要，检索先在第一层索引上取 top-K，再对候选回读原始帧做精定位。评测时固定 memory budget 与延迟预算，报告「预算内 R@K」，而不是无限历史下的 R@K。再加一组 memory on/off 对照，才能回答记忆是否改变了动作选择。</p>
+
+<h2 id="repro">7. 落地清单</h2>
+<ul class="checklist">
+<li>把证据标成 response track：为每条记忆记录起止时间、证据帧、涉及的物体或区域，而不是只存一个 embedding。</li>
+<li>固定一套查询集：语言、物体、活动各留 20 条以上，分别测排序与定位，不要混成一个总分。</li>
+<li>按 R@K@tIoU 报告：同时给 R@1@0.3 与 R@5@0.5，并注明 K、历史长度与 memory budget。</li>
+<li>加测检索延迟：记录写入延迟、索引更新时间、查询返回 top-K 的 p50/p95，并保留「允许回读原始帧」的开关做对照。</li>
+<li>做记忆开/关对照：在同一策略与同一初始条件下比较任务成功率、干预次数，确认记忆带来的是控制收益而不是离线分数。</li>
+</ul>
+<div class="srcbox">
+<p><b>来源：</b>arXiv abs <a href="https://arxiv.org/abs/2110.07058">2110.07058v3</a>（2022-03-11）；<a href="https://openaccess.thecvf.com/content/CVPR2022/html/Grauman_Ego4D_Around_the_World_in_3000_Hours_of_Egocentric_Video_CVPR_2022_paper.html">CVPR 2022 论文页</a>；<a href="https://ego4d-data.org/docs/benchmarks/episodic-memory/">官方基准文档</a>（访问于 2026-11-17）；<a href="https://github.com/EGO4D/episodic-memory">EGO4D/episodic-memory</a> 评测代码。数字出处为摘要、第 5.1 节与附录 F 的 Table 9–12、Figure 35–36。</p>
+<p><b>图像说明：</b>作者论文 Figure 7（Episodic Memory 的三类查询），本页使用已导出的 <code>figures/fig_episodic_queries.jpg</code>；原图为任务示意，不含实验结果。</p>
+</div>
+<p class="pagefoot">相关页面：<a href="../hierarchical-event-memory/index.html">Hierarchical Event Memory</a> · <a href="../kemo/index.html">KEMO 关键帧记忆</a> · <a href="../event-vstream/index.html">Event-VStream</a> · <a href="../../index.html">返回总站</a></p>
+</article>
+</div>
+</main>
+</body>
+</html>

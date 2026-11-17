@@ -3,61 +3,114 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>HAT｜论文精读</title>
+<title>HAT｜专题一 · 历史关键事件检测</title>
 <link rel="stylesheet" href="../../style.css">
 </head>
 <body>
 <header>
 <div class="wrap">
-<div class="eyebrow">P1 · History-Augmented On-TAL</div>
-<h1>HAT：History-Augmented Anchor Transformer</h1>
-<p>以未来监督的历史模块增强短窗口 anchor</p>
-<nav>
-<a href="../../index.html">← 返回导航</a>
-<a href="../index.html">P1 总览</a>
-</nav>
+<div class="crumb"><a href="../../index.html">VLA 历史记忆</a> / <a href="../index.html">专题一 · 历史关键事件检测</a> / P1-5</div>
+<div class="eyebrow">Paper Deep Read · 程序性历史</div>
+<h1>HAT: History-Augmented Anchor Transformer for Online Temporal Action Localization</h1>
+<p>Sakib Reza, Yuexi Zhang, Mohsen Moghaddam, Octavia Camps · ECCV 2024｜
+<a href="https://arxiv.org/abs/2408.06437">arXiv</a> · <a href="https://www.ecva.net/papers/eccv_2024/papers_ECCV/papers/03153.pdf">论文页</a> · <a href="https://github.com/sakibreza/ECCV24-HAT">代码</a>
+</p>
 </div>
 </header>
 <main>
+<div class="doc-layout">
+<aside class="doc-side">
+<nav class="sidenav">
+<h4>本页目录</h4>
+<a href="#summary">1 核心摘要</a>
+<a href="#stage">2 事件流水线定位</a>
+<a href="#problem">3 问题与动机</a>
+<a href="#method">4 方法拆解</a>
+<a href="#evidence">5 证据与实验</a>
+<a href="#fit">6 优点、局限与 VLA 适配</a>
+<a href="#repro">7 落地清单</a>
+<div class="side-extra">边界定位环节的 P1 参考：把固定长度历史压成少量 token，用“接下来发生什么”的弱标签校准后再注入 anchor。</div>
+</nav>
+</aside>
 <article>
-<p class="meta">Sakib Reza et al. · Northeastern University · ECCV 2024 · <a href="https://arxiv.org/abs/2408.06437">arXiv</a> · <a href="https://www.ecva.net/papers/eccv_2024/papers_ECCV/papers/03153.pdf">论文</a> · <a href="https://github.com/sakibreza/ECCV24-HAT">代码</a>
-</p>
-<div class="toc">
-<a href="#summary">摘要</a>
-<a href="#motivation">动机</a>
-<a href="#method">方法</a>
-<a href="#results">实验</a>
-<a href="#limits">优劣</a>
-<a href="#takeaway">总结</a>
+<div class="verdict">
+<div class="vt">决策卡</div>
+<p>可直接借“可学习 history token 压缩 + 交叉注意力注入 anchor”这套结构，让短窗口 anchor 带上过程先验；代价是历史长度按数据集手调且固定，历史写错后没有任何回退机制。</p>
+<dl>
+<dt>最小可复用件</dt><dd>以 <code>L_comp</code> 个可学习 history token 为 query、长历史特征为 key/value 的压缩解码器，后接用当前窗口类别弱监督的 anticipation head（权重 <code>γ = 0.2</code>）。</dd>
+<dt>主要风险</dt><dd>历史污染：错误片段经压缩后直接改写 anchor 表征，模块内没有门控、置信度或时间衰减。</dd>
+<dt>复现门槛</dt><dd>帧级预训练特征（I3D / SlowFast / TSN）与逐帧动作标注；训练时需要当前窗口的类别标签算辅助损失，推理不需要未来帧。</dd>
+</dl>
 </div>
+
 <h2 id="summary">1. 核心摘要</h2>
-<p>HAT 针对 OAT 的短窗口 anchor 缺少长程过程线索的问题，加入历史增强模块：先从历史特征中提炼与当前动作有关的上下文，再以 action anticipation 对历史表示施加“未来监督”，最后将 refined history 与当前 anchor 融合。它在 EGTEA、EPIC 等程序性第一视角（PREGO）数据上显著优于比较方法，在 THUMOS/MUSES 上可比或略优，说明历史在有步骤依赖的任务中尤其关键。</p>
-<h2 id="motivation">2. 研究动机</h2>
-<p>“切番茄”当前窗口可能很像其他切割动作，但此前取刀、放置食材等历史能消除歧义。只把很长历史直接注意力汇入当前，既易稀释相关片段，也没有明确训练信号告诉模型哪些历史会服务未来。HAT 因而把历史作为可提炼、可被未来动作监督的表示。</p>
-<h2 id="method">3. 方法论</h2>
-<object class="figure" data="figures/fig2_architecture.pdf" type="application/pdf" aria-label="HAT Figure 2 architecture">
-</object>
-<p class="caption">Figure 2。作者 arXiv LaTeX 源码 <code>Figures/model.pdf</code>：HAT 的 history module 与 anchor transformer。</p>
-<h3>3.1 当前 anchor 与历史分工</h3>
-<p>短窗口经 encoder/decoder 产生不同时间尺度的 anchor 特征，负责当前局部定位。历史模块并行处理此前视频表征，将其压缩成可与 anchor 融合的 contextual feature；这不是替代局部窗口，而是补足过程先验。</p>
-<h3>3.2 Future-Supervised History Module</h3>
-<p>论文在历史支路接 action anticipation head，利用未来动作的训练标签来塑造历史表示；随后 Future-Driven History Refinement 选择、融合更相关的历史信息。训练期的 future supervision 在推理期不读取未来，因此在线约束仍成立。输出仍经分类/定位 head 与在线抑制流程产生 proposal。</p>
-<h3>3.3 历史如何进入 anchor</h3>
-<p>HAT 保留 OAT 的短期分支：当前窗口先经 transformer encoder 得到 temporal contextual feature，decoder 的 learnable anchor token 从中得到各尺度 anchor feature。新增的 history branch 处理更早的特征，并非把历史帧简单拼到滑窗末尾。它先由 Future-Supervised History Module 生成历史表示，再由 Future-Driven History Refinement 提炼与当前任务有关的部分，最后和当前 anchor 特征融合，送往分类与定位头。</p>
-<p>这里的“future”只在训练目标中出现：anticipation head 要求历史表示对随后动作有预测力。部署时模型没有访问未来视频，而是使用已训练好的 history module。这个差异应写清，否则很容易把训练期的监督误认为线上数据泄漏。</p>
-<h3>3.4 为什么 PREGO 更能检验它</h3>
-<p>EGTEA、EPIC 的程序性第一视角活动有强步骤关联：当前切、洗、放置常需结合先前拿取工具或准备食材才能消歧。相比之下，THUMOS/MUSES 的动作片段更常能由局部运动识别。作者因而把 PREGO 与非 PREGO 分开表格报告；这不是把四个数据集混成一个平均值，而是在检验“历史是否真有用”的条件差异。</p>
-<h2 id="results">4. 实验与结果</h2>
-<p>原文 Table 1 在 EGTEA、EPIC（PREGO）报告各 tIoU 下 mAP，Table 2 在 THUMOS、MUSES 报告非 PREGO 对比；结论是 PREGO 显著优于既有 On-TAL，非 PREGO 保持可比或略优。Table 3 逐步去除 future-supervised history、anticipation head、refinement，验证历史模块各部件；Table 7 还报告 HAT 相对 OAT 的 Average Early Detected Time。论文没有把单一汇总数当作跨数据集结论，因此本页不把不同协议的 mAP 混为一个排名。</p>
-<h3>4.1 实验应回答的两个问题</h3>
-<p>Table 3 是机制因果证据：只加历史、再加 anticipation、再加 refinement 的分步比较用于判断改善来自哪里。Table 7 则检验部署层面的时效性。若仅引用某个最高 mAP，会遗漏作者最重要的限定——历史模块的优势在程序性第一视角任务更明显；这也是它对长程机器人操作更有参考价值、但不能直接保证在所有第三视角数据上大幅领先的原因。</p>
-<h2 id="limits">5. 优势与局限</h2>
-<p>
-<b>优势：</b>历史显式服务当前 anchor；训练目标令“可用于未来”的历史更有辨识性；特别贴近程序性第一视角任务。<br>
-<b>局限：</b>历史长度与融合方式仍是超参数；future supervision 依赖动作标注；长期历史如何压缩、错误如何遗忘仍未由在线写入预算直接回答。</p>
-<h2 id="takeaway">6. 总结</h2>
-<p>HAT 把“过去”从被动缓存变为由未来任务塑形的状态。对 VLA，适合把后续子任务、状态转移或成功条件当作训练期监督，让记忆选择偏向真正能帮助下一步控制的历史事件。</p>
+<p>在线时序动作定位（OnTAL）要求每个时刻只凭已见帧输出实例级 proposal，且已提交的实例不能回改。OAT 一类方法把全部判别力压在 8 秒短窗口上：窗口内的运动足以区分“切”与“抓”，却看不到此前取刀、取食材的准备动作，程序性第一视角视频里这种歧义最密集。HAT 在短窗口之外并行维护一段固定长度的连续历史，先用少量可学习 history token 把它压缩，再用“当前窗口内出现了哪些动作类别”这一弱标签训练 anticipation head，迫使压缩器把注意力放到对接下来动作有用的帧上；压缩后的历史经短时上下文精炼，以交叉注意力注入 anchor 特征。</p>
+<p>贡献是结构性的：历史成为 anchor 表征的一部分，而不是外挂分类器的额外输入。判定：它是“边界定位”环节里最直接可借的历史注入方案，但它既不决定候选何时开始，也不处理历史写错后的纠正。</p>
+
+<h2 id="stage">2. 事件流水线定位</h2>
+<div class="flowline">
+<span>候选生成</span><span class="part">语义确认</span><span class="on">边界定位</span><span>记忆写入</span><span>检索</span><span>评测</span>
+</div>
+<p>落在边界定位：输入是已经流过的帧特征，输出是每个时刻每个 anchor 的类别与边界修正量，经在线抑制网络提交实例。对语义确认只是部分相关——类别头给出的是 anchor 级后验，不是“阶段是否切换”的判决；对记忆写入也只提供“历史如何在表征层被使用”，不提供写入门控与淘汰策略。</p>
+<table>
+<tr><th>方法</th><th>历史用法</th><th>监督是否用未来</th><th>提交粒度</th></tr>
+<tr><td>OAT</td><td>不用历史，只编码当前短窗口</td><td>否</td><td>实例级：每帧 M 个 anchor 经 NMS 与在线抑制网络提交，提交后不可改</td></tr>
+<tr><td>MATR</td><td>显式记忆库，按 flag 写入、FIFO 淘汰，可回溯超出窗口的起点</td><td>否，写入依据是当前片段与实例是否重叠</td><td>实例级：需等动作终点可见才提交</td></tr>
+<tr><td>HAT</td><td>固定长度连续历史（EGTEA/EK-100 上 48 个特征，约 24 秒），压成 <code>L_comp</code> 个 token 后注入 anchor</td><td>是，但只监督当前窗口的动作类别，且仅训练期使用</td><td>实例级：沿用 OAT 的每帧 NMS 与在线抑制，提交后不可改</td></tr>
+</table>
+
+<h2 id="problem">3. 问题与动机</h2>
+<p>失效模式很具体：程序性第一视角里，当前窗口的视觉证据经常不足以唯一确定动作。切番茄中段与切黄瓜中段几乎同构，区别在之前取了什么、放在哪里；手部遮挡或动作出画又会让当前帧接近背景。OAT 的短窗口在起点滑出后只剩“正在切”这一局部证据，无法判断这是第几步、属于哪个任务阶段，于是同一动作在不同上下文里被反复提交成碎片。</p>
+<p>把长历史直接送进自注意力同样不行，有两个代价。一是复杂度随历史长度平方增长，24 秒在 2 特征/秒下就是 48 个 token，与 anchor 解码器叠加后训练与推理都变重。二是无关帧（走动、翻找、等待）被平均进来，关键的准备动作反而被稀释。更根本的是缺少训练信号：没有东西告诉压缩器“哪段历史对接下来的动作有用”，它只能学无损压缩，学不到任务相关的选择。</p>
+<p>数据侧的对比解释了作者为什么把 PREGO 与非 PREGO 分开报告：EGTEA 每段视频平均 180 个实例、15.6 个动作类别，THUMOS 只有 15.5 个实例、1.2 个类别。单类体育视频里局部运动足以判别，历史自然带不来多少增益；步骤密集的厨房任务才真正需要过程先验。</p>
+
+<h2 id="method">4. 方法拆解</h2>
+<img class="figure" src="figures/fig2_architecture.png" alt="HAT 总体结构：左侧为长历史经 history compressor 压缩并由 action anticipation head 监督，右侧为短窗口 anchor 经交叉注意力注入精炼后的历史">
+<p class="caption">Figure 2，HAT 总体结构：future-supervised history module（压缩器 + 预判头 + 未来驱动精炼）与 history-augmented anchor module。原图 PDF 见 <code>figures/fig2_architecture.pdf</code>，由作者 LaTeX 源码 Figure 2 渲染。</p>
+
+<h3>4.1 输入与时间表征</h3>
+<p>输入是帧级预训练特征：EGTEA 用 Kinetics 预训练 I3D，原帧率 24 FPS、stride 12，即每秒 2 个特征；EK-100 用 SlowFast，THUMOS 用双流 TSN，MUSES 用 I3D。特征经线性层投到 <code>D = 1024</code>，加位置编码后组成长度 <code>L_q = L_h + L_s</code> 的输入队列，再切成两段：右端紧贴当前时刻的短窗口 <code>S</code>（长度 <code>L_s</code>）与它之前的连续历史 <code>H</code>（长度 <code>L_h</code>）。EGTEA/EK-100 取 <code>L_h = 48</code>、<code>L_s = 16</code>，对应 24 秒历史与 8 秒短窗口；THUMOS 取 256/64，MUSES 取 300/150。</p>
+<p>两点对实现有影响。历史是紧邻短窗口的连续片段，不做稀疏采样、不跨越空档，所以模型看到的是最近 24 秒的全部内容，而不是整段视频的关键帧摘要。短窗口长度同时决定 anchor 可表达的最大时长：EGTEA/EK-100 的 6 个 anchor 为 2/4/6/8/12/16 个特征，最长 anchor 正好等于 <code>L_s</code>。</p>
+
+<h3>4.2 关键机制</h3>
+<p><b>压缩。</b>长度 <code>L_comp ≪ L_h</code> 的可学习 history token 作 query，历史特征 <code>H</code> 作 key/value，经 <code>N_c = 5</code> 个解码块得到 <code>H_comp</code>。压缩把读取历史的代价从随 <code>L_h</code> 平方增长变成随 <code>L_comp × L_h</code> 线性增长，也让后续与 anchor 的交互只在少量 token 上做。</p>
+<p><b>未来监督。</b>监督目标不是下一片段的特征回归，也不是帧级标签，而是当前滑动窗口 <code>S</code> 内出现的动作类别——对历史编码器而言这就是“未来”。粒度是窗口级弱监督，输出一个 <code>C</code> 维类别向量；结构为线性层降维到 <code>D/4</code>、展平、两层全连接（ReLU 与 sigmoid）。梯度只经压缩器回传，压缩器因此必须保留能预测“接下来发生什么”的帧，这是它区别于普通池化压缩的关键。</p>
+<p><b>与 OadTR 的分界。</b>OadTR 也做未来预测，但那是解码端一个独立的辅助预测头，输出未来若干步的预测后不再参与当前检测表征；HAT 的 anticipation head 同样是分类头，梯度却回传到历史压缩器，改写的是送进分类器的 anchor 表征本身。</p>
+<p><b>精炼与注入。</b>压缩历史作 query、短窗口编码 <code>S_enc</code> 作 key/value，经 <code>N_r = 2</code> 个解码块，用当前上下文校准历史注意力，再加残差与归一化：<code>H_ref = Norm(d(H_comp, S_enc) + H_comp)</code>。anchor 侧沿用 OAT：<code>S</code> 经编码器得到 <code>S_enc</code>，再由带可学习 anchor query 的解码器产生 <code>A</code>。历史进入 anchor 的方式不是拼接，而是把 <code>A</code> 作 query、<code>H_ref</code> 作 key/value 再做一次交叉注意力：<code>A_final = Norm(d(A, H_ref) + A)</code>。作者把这套融合与替代方案做了对比（Table 7，EGTEA split-1 平均 mAP）：平均池化 19.3、拼接 19.5、LSTR 的 Temporal NLB 20.3、Transformer 解码器 20.8。</p>
+
+<h3>4.3 输出与在线边界</h3>
+<p>预测头接在 <code>A_final</code> 上，同时给出类别、目标终点相对 anchor 终点的偏移、以及目标时长与 anchor 时长的比值。每帧产生 M 个 proposal，过滤背景后做单帧 NMS，再送入在线抑制网络，按置信度历史决定是否写入最终实例集。整个流程是因果的：所有输入特征满足 <code>i ≤ t</code>，<code>S</code> 的右端就是当前时刻。</p>
+<p>“未来”只在训练目标里出现，而且只是相对历史编码器的未来——即仍然落在 <code>t</code> 之内的当前窗口。推理时 anticipation head 的输出被直接丢弃，模型只用训练好的压缩器与精炼器，因此在线约束成立，不存在读取未来帧的问题。这也意味着该模块的收益完全依赖训练期标签：窗口类别标签缺失时，辅助损失无从计算。</p>
+<p>训练目标为 <code>L = αL_c + β(L_o + L_l) + γL_a</code>，取 <code>α = β = 1</code>、<code>γ = 0.2</code>；分类项用自适应焦点损失，回归项为终点偏移与长度的 L1 损失。论文报告在 RTX 4090 上 147 FPS，按 OnTAL 惯例这是模型前向速度，部署时视觉编码器的开销需另算。</p>
+
+<h2 id="evidence">5. 证据与实验</h2>
+<p>Table 1 在 PREGO 上报告 tIoU 0.1–0.5 的 mAP：EGTEA 上 OAT 19.6、HAT 21.5；EK-100 上 14.2 升到 15.3。Table 2 在非 PREGO 上报告 0.3–0.7：THUMOS 44.6 升到 44.8，MUSES 9.8（OAT 的重建结果，原文标星）升到 10.8。方向与主张一致——过程性越强、每段视频类别越多，收益越大；但 THUMOS 上 0.2 的提升不足以支撑“通用更优”的说法。</p>
+<p>机制证据来自 Table 3（EGTEA split-1，平均 mAP）：完整模块 20.8，去掉 anticipation head 19.8，去掉未来驱动精炼 20.0，两者都去掉 19.2，整个 history module 去掉 18.9。单个预判头的贡献大于精炼模块，说明“用未来监督校准压缩器”比“再用当前上下文精炼一次”更关键。Table 4 把历史处理换成 OAD 领域的 LSTR（19.5）与 GateHUB（19.9），FSHM 为 20.8；Table 6 扫历史长度，0/8/16/24/32/40 秒对应 18.9/19.2/20.2/20.8/20.2/20.6，24 秒最好但并不单调。Table 8 的 AEDT：OAT 平均 −1.01 秒，HAT −0.97 秒，两者都在动作结束前约 1 秒检出，加历史没有牺牲提前量。</p>
+<p>需要提醒的一处不一致：Table 1 与 Table 3 都报 EGTEA，数值却是 21.5 与 20.8。Table 3 明确写 split-1，Table 1 的划分说明未在正文中给出，本页不在这两个数字之间做换算，也不把不同协议的 mAP 汇成一个排名。</p>
+
+<h2 id="fit">6. 优点、局限与 VLA 适配</h2>
+<div class="duo">
+<div><h4>可迁移</h4><p>“少量可学习 token 压缩长历史”与“用接下来会发生什么的弱标签校准压缩器”可以整体搬到机器人策略里：把 24 秒固定窗口换成固定数量的已完成子任务 token，压缩器输出直接作为策略或阶段分类器的条件。交叉注意力注入 anchor 的做法也比拼接更容易控制历史的影响强度。</p></div>
+<div><h4>不成立的前提</h4><p>OnTAL 假设动作是闭集、步骤顺序清晰、历史等间隔采样、每帧都要输出 proposal。机器人历史是“已完成子任务 + 物体状态”，事件稀疏且不等长；147 FPS 不含视觉编码器；模块没有任何写入可靠性判断。步骤顺序被打断（返工、跳步）时，固定 24 秒窗口里可能全是无关片段。</p></div>
+</div>
+<p>在机器人任务里，HAT 的连续历史对应的是已完成子任务序列：取刀、取番茄、放到砧板，每一步留下的是物体状态与位姿变化，而不是 48 个等间隔帧特征。映射时要注意粒度——视频每秒 2 个特征，控制回路常在 10–30 Hz，照抄 48 步只有 2–5 秒；应按“最多回看多少个已完成子任务”设 <code>L_h</code>，把每个子任务压成一到几个 token，让 <code>L_comp</code> 与任务步数同阶。</p>
+<p>错误历史的污染路径很直接：压缩器没有写入门控，也没有置信度或时间衰减。一旦上游把“已拿起刀”误判并写入缓冲，这类片段会和其他历史一起被压进 <code>H_comp</code>，再作为 key/value 参与 anchor 的交叉注意力；当前 anchor 若正处在“切”与“抓”的边界，历史证据会把分类与边界回归一起推向错误的一侧，而且错误会随窗口滑动持续存在。这与 MATR 的 flag 门控加 FIFO 形成对照：HAT 规定“读多长”，不规定“信多少”。最小改造是在写入侧加置信度阈值与淘汰规则，在读取侧给历史 token 加可学习的时间衰减或可靠性权重。</p>
+
+<h2 id="repro">7. 落地清单</h2>
+<ul class="checklist">
+<li>按秒设定历史长度：以 24 秒为初值，复现 Table 6 的长度扫描，记录收益饱和点，再换算成机器人控制步数。</li>
+<li>用 <code>L_comp</code> 个可学习 history token 压缩历史，不要直接把长历史拼接进短窗口输入。</li>
+<li>把 anticipation head 的监督换成“当前窗口内技能类别”，从 <code>γ = 0.2</code> 起步，并确认推理时丢弃该头。</li>
+<li>给历史写入加置信度门控与 FIFO 淘汰，先以 MATR 的 flag 规则作基线，再比较错误历史被放大的频率。</li>
+<li>按 Table 3 的顺序做消融（去预判头、去精炼、去整个模块），确认增益来自监督信号而非参数量。</li>
+</ul>
+<div class="srcbox">
+<p><b>来源：</b>arXiv:2408.06437（v1，2024-08-12，含补充材料 Table 6–8）；ECCV 2024 论文（ECVA papers 03153）；官方代码 https://github.com/sakibreza/ECCV24-HAT 。数据集与实现细节见正文 4.1–4.2 节，全部数值取自 Table 1、2、3、4、6、7、8。</p>
+<p><b>图像说明：</b>Figure 2 由作者 LaTeX 源码渲染为 PNG，原始 PDF 为 <code>figures/fig2_architecture.pdf</code>。</p>
+</div>
+<p class="pagefoot">相关页面：<a href="../oat/index.html">OAT · 滑窗 anchor</a> · <a href="../matr/index.html">MATR · 记忆库</a> · <a href="../oadtr/index.html">OadTR · 未来预测</a> · <a href="../../index.html">返回总站</a></p>
 </article>
+</div>
 </main>
 </body>
 </html>

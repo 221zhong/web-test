@@ -3,191 +3,120 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>VLA 历史关键事件检测｜论文导航</title>
+<title>VLA 历史记忆｜论文精读站点</title>
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
 <header>
 <div class="wrap">
-<div class="eyebrow">Research Notes · Navigation</div>
-<h1>VLA 历史关键事件检测</h1>
-<p>历史记忆 / 关键事件检测 / 流式视频与视频多模态模型</p>
+<div class="eyebrow">Research Notes · 23 Deep Reads</div>
+<h1>VLA 的历史记忆该怎么建</h1>
+<p>两个专题、23 篇精读：何时把观测写成事件，以及写进去的历史以什么形式保存、压缩与找回</p>
 </div>
 </header>
 <main>
+
 <section class="lead">
-<b>页面定位：</b>根页只承担导航与研究路线总览；每一篇精读均是独立子页面。图像仅来自可核验的作者 LaTeX 源码，实验结果不使用图片。</section>
-<h2>P0 路线总览</h2>
+<b>站点定位：</b>这里不放文献清单，只回答两个工程问题。第一，VLA 在连续观测里凭什么判断「这一刻值得写进长期记忆」——这是<a href="papers/index.html">专题一</a>；第二，写进去的东西用什么表征承载、在固定显存下怎么压缩与检索——这是<a href="papers/kv-cache-event-memory/index.html">专题二</a>。每篇都是独立子页，页首有决策卡，直接给「最小可复用件 / 主要风险 / 复现门槛」。
+</section>
+
+<h2>两个专题</h2>
+<div class="entry">
+<a class="entry-card" href="papers/index.html">
+<div class="num">Topic 01</div>
+<h3>历史关键事件检测</h3>
+<p>从候选生成、语义确认、在线提交到长期维护，回答「何时写入」。核心矛盾是因果性与不可回改：能看未来的方法精度高，能实时提交的方法必须接受更早的判决。</p>
+<div class="statrow"><span class="stat">12 篇精读</span><span class="stat">P0 × 5</span><span class="stat">P1 × 6</span><span class="stat">P2 × 1</span></div>
+</a>
+<a class="entry-card" href="papers/kv-cache-event-memory/index.html">
+<div class="num">Topic 02</div>
+<h3>KV Cache 与事件记忆</h3>
+<p>从跨控制步复用、事件驱动写入到分层压缩与低比特量化，回答「以什么形式保存」。核心矛盾是预算固定而历史无限：每个 token、每一层、每个精度位都要有分配依据。</p>
+<div class="statrow"><span class="stat">11 篇精读</span><span class="stat">P0 × 5</span><span class="stat">P1 × 5</span><span class="stat">P2 × 1</span></div>
+</a>
+</div>
+
+<h2>全站路线总览</h2>
+<div class="wide">
 <table>
 <tr>
 <th>环节</th>
-<th>可参考工作</th>
-<th>面向 VLA 的设计含义</th>
+<th>专题一 · 何时写入</th>
+<th>专题二 · 如何保存</th>
+<th>合起来的工程含义</th>
 </tr>
 <tr>
-<td>候选生成</td>
-<td>FlowGEBD、KEMO</td>
-<td>用因果 motion / robot-state 峰值把密集视频压缩成少数候选。</td>
+<td>信号来源</td>
+<td><a href="papers/flowgebd/index.html">FlowGEBD</a>、<a href="papers/kemo/index.html">KEMO</a> 用光流或关节减速做零训练提名</td>
+<td><a href="papers/vla-cache/index.html">VLA-Cache</a> 用相邻控制步的 token 变化判断可复用性</td>
+<td>同一个「变化量」既能提名事件，也能决定哪些计算可省——只是时间尺度不同。</td>
 </tr>
 <tr>
-<td>语义确认</td>
-<td>DDM-Net、KEMO</td>
-<td>appearance 与 motion 分开取证，再确认是否值得写入。</td>
+<td>确认与门控</td>
+<td><a href="papers/ddm-net/index.html">DDM-Net</a> 的 intra + cross 两阶段互证</td>
+<td><a href="papers/streammem/index.html">StreamMem</a> 的 proxy query 评分与固定容量</td>
+<td>确认通过才值得付出存储成本；两条线都需要一个与任务无关的「重要性」打分器。</td>
 </tr>
 <tr>
-<td>在线提交</td>
-<td>CAG-QIL</td>
-<td>明确区分 pending、active 与 committed，避免过早落库。</td>
+<td>写入与提交</td>
+<td><a href="papers/cag-qil/index.html">CAG-QIL</a> 的边沿触发提交，提交即不可回改</td>
+<td><a href="papers/kemo/index.html">KEMO</a>、<a href="papers/hermes/index.html">HERMES</a> 把事件写成 memory token 或分层 KV</td>
+<td>提交的粒度决定记忆的原子单位：实例级、事件级还是 token 级。</td>
 </tr>
 <tr>
 <td>长期维护</td>
-<td>Hierarchical Event Memory</td>
-<td>近期细、远期粗，按事件尺度分配内存并去冗余。</td>
+<td><a href="papers/hierarchical-event-memory/index.html">Hierarchical Event Memory</a> 的多尺度 proposal 树</td>
+<td><a href="papers/infinipot-v/index.html">InfiniPot-V</a>、<a href="papers/video-memcomp/index.html">Video-MemComp</a> 的预算分配与逐层压缩</td>
+<td>近期细、远期粗是同一条原则在两种存储形态上的实现。</td>
 </tr>
 <tr>
-<td>控制验证</td>
-<td>KEMO</td>
-<td>以 VLA 的任务/子任务成功率检验记忆选择，而非只测边界 F1。</td>
-</tr>
-<tr>
-<td>KV cache 更新</td>
-<td>VLA-Cache、StreamMem、KEMO</td>
-<td>将事件相关性转化为 reuse、局部 refresh 与长期 commit 的缓存策略。</td>
+<td>检索与验收</td>
+<td><a href="papers/ego4d-episodic-memory/index.html">Ego4D EM</a> 用未来查询检验历史是否可找回</td>
+<td><a href="papers/rekv/index.html">ReKV</a>、<a href="papers/streamkv/index.html">StreamKV</a> 的分段外存与 query 检索</td>
+<td>不报告检索命中率，就无法证明写进去的东西有用。</td>
 </tr>
 </table>
-<h2>P0 论文精读</h2>
-<section class="grid">
-<a class="paper-card" href="papers/ddm-net/index.html">
-<span class="tag">P0-1 · 语义边界确认</span>
-<h3>DDM-Net：Progressive Attention on Multi-Level Dense Difference Maps</h3>
-<p>DDM-Net 面向 Generic Event Boundary Detection（GEBD）：不预设动作类别，只判断人类会自然感到“事件切换”的时刻。它以多层视觉特征差替代单一光流，并以 progressive att…</p>
-<p class="meta">Tang et al. · CVPR 2022</p>
-</a>
-<a class="paper-card" href="papers/flowgebd/index.html">
-<span class="tag">P0-2 · 低成本候选生成</span>
-<h3>FlowGEBD：What’s in the Flow?</h3>
-<p>FlowGEBD 探索一个轻量的 GEBD 路径：不训练神经网络，仅依赖运动线索寻找边界。它组合像素追踪与 flow normalization 两个非参数算法，并在末端进行时间 refinement；论文报告 Kineti…</p>
-<p class="meta">Gothe et al. · WACV 2024</p>
-</a>
-<a class="paper-card" href="papers/cag-qil/index.html">
-<span class="tag">P0-3 · 在线提交决策</span>
-<h3>CAG-QIL：Context-Aware Actionness Grouping via Q Imitation Learning</h3>
-<p>CAG-QIL 提出 Online Temporal Action Localization（On-TAL）：系统在视频流中立即输出动作实例，不能访问未来帧，历史 proposal 也不能事后改写。它用 context-aw…</p>
-<p class="meta">Kang et al. · ICCV 2021</p>
-</a>
-<a class="paper-card" href="papers/hierarchical-event-memory/index.html">
-<span class="tag">P0-4 · 分层事件存储</span>
-<h3>Hierarchical Event Memory for Accurate and Low-latency Online Video Temporal Grounding</h3>
-<p>该工作处理 Online Video Temporal Grounding：给定语言 query，在无法看未来帧的长视频流中尽早定位目标事件。核心是把历史由帧队列变为多尺度 event proposal memory，并用 …</p>
-<p class="meta">Zheng et al. · ICCV 2025</p>
-</a>
-<a class="paper-card" href="papers/kemo/index.html">
-<span class="tag">P0-5 · VLA 端到端验证</span>
-<h3>KEMO：Event-Driven Keyframe Memory for Long-Horizon Robot Manipulation with VLA Policies</h3>
-<p>KEMO 是五篇中最贴近 VLA 历史关键事件检测的工作。它不保存稠密轨迹，也不依赖在线任务分解：先用机器人运动学显著性提出关键帧，再以视觉去重确认，并把有序 memory token 注入 π0.5。论文在六个真实双臂任务…</p>
-<p class="meta">Zeng et al. · arXiv 2026</p>
-</a>
-</section>
-<h2>KV Cache 与事件记忆专题</h2>
-<section class="grid">
-<a class="paper-card" href="papers/kv-cache-event-memory/index.html">
-<span class="tag">专题总览 · 11 篇精读</span>
-<h3>从 KV Reuse 到事件驱动长期记忆</h3>
-<p>覆盖跨控制步复用、关键事件写入、分层压缩、长期检索、多任务运行时与低比特量化。</p>
-<p class="meta">进入 KV Cache 与事件记忆专题</p>
-</a>
-</section>
-<h2>KV Cache 与事件记忆精读</h2>
-<section class="grid">
-<a class="paper-card" href="papers/vla-cache/index.html">
-<span class="tag">P0 · VLA 推理缓存</span>
-<h3>VLA-Cache：Adaptive Token Caching</h3>
-<p>以跨控制步的 token 变化决定哪些视觉计算与 KV 可直接复用，哪些必须刷新。</p>
-<p class="meta">Xu et al. · arXiv 2025</p>
-</a>
-<a class="paper-card" href="papers/streammem/index.html">
-<span class="tag">P0 · 流式 KV 记忆</span>
-<h3>StreamMem：Query-Agnostic KV Cache Memory</h3>
-<p>以固定容量 KV memory、proxy query 评分和 frame-wise merge 处理未知未来 query 的视频流。</p>
-<p class="meta">Yang et al. · arXiv 2025</p>
-</a>
-<a class="paper-card" href="papers/kemo/index.html">
-<span class="tag">P0 · 事件驱动写入</span>
-<h3>KEMO：Event-Driven Keyframe Memory</h3>
-<p>以 motion 候选与视觉确认选择关键帧，并将事件证据注入长程 VLA 控制。</p>
-<p class="meta">Zeng et al. · arXiv 2026</p>
-</a>
-</section>
-<h2>流式 KV Cache 深度拓展</h2>
-<section class="grid">
-<a class="paper-card" href="papers/hermes/index.html">
-<span class="tag">P0 · 分层 KV memory</span>
-<h3>HERMES：KV Cache as Hierarchical Memory</h3>
-<p>从 attention 机制出发，将浅层细节与深层摘要组织为实时流式视频的分层 KV 记忆。</p>
-<p class="meta">Zhang et al. · arXiv 2026</p>
-</a>
-<a class="paper-card" href="papers/oxygen/index.html">
-<span class="tag">P0 · VLA serving</span>
-<h3>OxyGen：Unified KV Cache Management</h3>
-<p>让操控、对话和记忆构建共享观测 prefill，并用连续 batching 协调不同频率的输出。</p>
-<p class="meta">Li et al. · arXiv 2026</p>
-</a>
-<a class="paper-card" href="papers/rekv/index.html">
-<span class="tag">P1 · 回溯检索</span>
-<h3>ReKV：In-context Video KV-Cache Retrieval</h3>
-<p>将历史视频 KV 置于外部存储，面对 query 仅检索相关分段并回载至上下文。</p>
-<p class="meta">Di et al. · ICLR 2025</p>
-</a>
-<a class="paper-card" href="papers/livevlm/index.html">
-<span class="tag">P1 · 在线理解</span>
-<h3>LiveVLM：Streaming-Oriented KV Cache</h3>
-<p>同时维护短期与长期视觉 KV，使流式视频到达时即可持续处理并快速回答。</p>
-<p class="meta">Ning et al. · arXiv 2025</p>
-</a>
-<a class="paper-card" href="papers/infinipot-v/index.html">
-<span class="tag">P1 · 固定预算</span>
-<h3>InfiniPot-V：Memory-Constrained Compression</h3>
-<p>以时间冗余与 value 显著性维持长度无关的 KV 内存上限。</p>
-<p class="meta">Kim et al. · arXiv 2025</p>
-</a>
-<a class="paper-card" href="papers/streamkv/index.html">
-<span class="tag">P1 · 事件段 KV</span>
-<h3>StreamKV：Segment-based Retrieval and Compression</h3>
-<p>先做语义分段，再进行段级摘要、检索和逐层自适应压缩。</p>
-<p class="meta">Chen et al. · AAAI 2026</p>
-</a>
-<a class="paper-card" href="papers/video-memcomp/index.html">
-<span class="tag">P1 · 敏感度预算</span>
-<h3>Video-MemComp：Sensitivity-Aware Memory</h3>
-<p>以局部近似误差和跨层敏感度共同分配流式 KV 的有限存储预算。</p>
-<p class="meta">Niu et al. · arXiv 2026</p>
-</a>
-<a class="paper-card" href="papers/vidkv/index.html">
-<span class="tag">P2 · KV 量化</span>
-<h3>VidKV：1.x-Bit KV Cache Quantization</h3>
-<p>在 Video LLM 中分别针对 Key 与 Value 设计极低比特量化和显著 token 保留。</p>
-<p class="meta">Tao et al. · arXiv 2025</p>
-</a>
-</section>
-<h2>历史关键事件检测专题</h2>
-<section class="grid">
-<a class="paper-card" href="papers/index.html">
-<span class="tag">专题总览</span>
-<h3>历史关键事件检测</h3>
-<p>六篇论文覆盖运动表征、在线实例定位、选择性历史与事件级 VLM memory。</p>
-<p class="meta">进入专题总览</p>
-</a>
-<a class="paper-card" href="papers/ego4d-episodic-memory/index.html">
-<span class="tag">P2 · 评测基准</span>
-<h3>Ego4D Episodic Memory</h3>
-<p>用未来查询验证被写入的历史是否可被正确找回。</p>
-<p class="meta">Grauman et al. · CVPR 2022</p>
-</a>
-</section>
+</div>
+
+<h2>两条线怎么接</h2>
+<div class="duo">
+<div>
+<h4>专题一决定「写不写」</h4>
+<p>它管的是语义判决：这一刻是不是一次真正的状态转移，值不值得占用记忆预算。产出是一个带起止时间、带确认证据的事件，而不是连续的帧缓存。</p>
+</div>
+<div>
+<h4>专题二决定「怎么存」</h4>
+<p>它管的是表征与预算：已确认的事件以 KV、摘要还是嵌入保存，多少层、多少位、留多久。产出是一份能在显存上限内被检索的历史。</p>
+</div>
+</div>
+<p>把两者接错的典型表现是：事件检测 F1 很好看，但下游查询命中率没有提升——因为写入的粒度、位置或精度与检索接口不匹配。因此验收必须回到 <a href="papers/ego4d-episodic-memory/index.html">Ego4D EM</a> 那类任务：给定历史与查询，能否返回正确的证据区间。</p>
+
+<h2>从哪里开始读</h2>
+<div class="route">
+<div class="card">
+<div class="step">Step 1 · 先看闭环</div>
+<h3><a href="papers/kemo/index.html">KEMO</a></h3>
+<p>全站唯一把「候选 → 写入 → VLA 控制」跑在真实双臂上的工作。先建立「记忆如何改变策略输入」的直觉，再回头补各环节的替代方案。</p>
+</div>
+<div class="card">
+<div class="step">Step 2 · 再补约束</div>
+<h3><a href="papers/cag-qil/index.html">CAG-QIL</a> · <a href="papers/matr/index.html">MATR</a></h3>
+<p>在线系统的硬约束是「不可回改」。这两篇给出两种提交粒度：边沿触发与终点回溯，决定了你能多早、多准地冻结一个事件。</p>
+</div>
+<div class="card">
+<div class="step">Step 3 · 最后压预算</div>
+<h3><a href="papers/streammem/index.html">StreamMem</a> · <a href="papers/hierarchical-event-memory/index.html">Hierarchical Event Memory</a></h3>
+<p>一条从 KV 侧压容量，一条从事件侧分槽位。读完能判断自己的系统该先省算力还是先省显存。</p>
+</div>
+</div>
+
 <h2>站点约定</h2>
 <div class="card">
-<p>新增工作请在 <code>papers/&lt;paper-slug&gt;/</code> 创建独立 <code>index.html</code> 与本地 <code>figures/</code>；根页只新增导航卡片。原图优先来源为 arXiv LaTeX 源码；若没有可核验源码图，则说明原因并省略图片，不用 PDF 页面裁图替代。</p>
+<p>新增工作请在 <code>papers/&lt;paper-slug&gt;/</code> 创建独立 <code>index.html</code> 与本地 <code>figures/</code>；导航页只新增入口与一行对比条目。精读页固定七节结构并使用共享 <code>style.css</code>，不引入内联样式与脚本。</p>
+<p>事实纪律：数字只写论文报告值，分开标注作者结论与本页分析；无法核验的细节写「未在已核验的公开材料中确认」，不做估算。图像优先取自作者公开的 LaTeX 源码；没有可核验源码图时明确省略，不用 PDF 页面裁图替代。</p>
 </div>
+
+<p class="pagefoot">在线入口：<a href="papers/index.html">专题一</a> · <a href="papers/kv-cache-event-memory/index.html">专题二</a> ｜ 仓库：<a href="https://github.com/221zhong/web-test">221zhong/web-test</a></p>
 </main>
 </body>
 </html>

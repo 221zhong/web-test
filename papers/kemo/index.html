@@ -1,86 +1,149 @@
 <!doctype html>
 <html lang="zh-CN">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>KEMO｜事件驱动关键帧记忆论文精读</title>
-  <link rel="stylesheet" href="../../style.css">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>KEMO 事件驱动关键帧记忆｜专题一 · 历史关键事件检测</title>
+<link rel="stylesheet" href="../../style.css">
 </head>
 <body>
-<header><div class="wrap">
-  <div class="eyebrow">VLA Historical Key Event Detection · Paper Deep Read</div>
-  <h1>KEMO：Event-Driven Keyframe Memory for Long-Horizon Robot Manipulation with VLA Policies</h1>
-  <p>Yihan Zeng et al. · arXiv 2026 · <a href="https://arxiv.org/abs/2606.23589">论文</a> · <a href="https://hatty-z.github.io/KEMO/">项目主页</a></p>
-  <nav><a href="../../index.html">← 返回论文导航</a></nav>
-</div></header>
-<main><article>
-<span class="tag">P0 · VLA 事件写入与历史记忆</span>
-
-<h2>论文信息</h2>
-<table>
-  <tr><th>作者</th><td>Yihan Zeng、Minghao Ye、Yiyuan Chen、Yide Shentu、Philipp Wu、Zike Yan、Zhongyu Li</td></tr>
-  <tr><th>机构</th><td>Hong Kong Embodied AI Lab、xdof.ai、香港中文大学、电子科技大学、上海交通大学</td></tr>
-  <tr><th>任务</th><td>带有 stage ambiguity 的长程双臂操作：当前画面相似，但因已完成的历史操作不同而应执行不同动作。</td></tr>
-  <tr><th>一句话</th><td>用机器人运动学减速提出关键帧候选、用视觉差异确认真实状态转移，再把少量有序关键帧作为历史证据注入 VLA。</td></tr>
-</table>
-<nav class="toc"><a href="#summary">摘要</a><a href="#motivation">动机</a><a href="#method">方法</a><a href="#exp">实验</a><a href="#limits">优势与局限</a><a href="#conclusion">总结</a></nav>
+<header>
+<div class="wrap">
+<div class="crumb"><a href="../../index.html">VLA 历史记忆</a> / <a href="../index.html">专题一 · 历史关键事件检测</a> / P0-5</div>
+<div class="eyebrow">Paper Deep Read · VLA 端到端验证</div>
+<h1>KEMO: Event-Driven Keyframe Memory for Long-Horizon Robot Manipulation with VLA Policies</h1>
+<p>Yihan Zeng et al. · arXiv 预印本 2026｜
+<a href="https://arxiv.org/abs/2606.23589">arXiv</a> · <a href="https://hatty-z.github.io/KEMO/">项目主页</a>
+</p>
+</div>
+</header>
+<main>
+<div class="doc-layout">
+<aside class="doc-side">
+<nav class="sidenav">
+<h4>本页目录</h4>
+<a href="#summary">1 核心摘要</a>
+<a href="#stage">2 事件流水线定位</a>
+<a href="#problem">3 问题与动机</a>
+<a href="#method">4 方法拆解</a>
+<a href="#evidence">5 证据与实验</a>
+<a href="#fit">6 优点、局限与 VLA 适配</a>
+<a href="#repro">7 落地清单</a>
+<div class="side-extra">全站唯一把「候选生成 → 记忆写入 → VLA 控制」跑通在真实双臂上的 P0 工作。</div>
+</nav>
+</aside>
+<article>
+<div class="verdict">
+<div class="vt">决策卡</div>
+<p>可以把「关节减速提名 → 冻结 DINOv2 去重 → 16 token/帧 的有序记忆注入 π0.5」整段搬进自己的 VLA，六个真实双臂任务 TSR 从 27.8% 提到 51.4%；代价是三个检测超参按任务手调，峰值要等 20–60 帧确认窗结束才写入。</p>
+<dl>
+<dt>最小可复用件</dt><dd>运动学峰值检测器：<code>S_t = 1/(1+δ̄_t)</code> 取局部极大，配视觉去重与不应期。纯本体信号，几十行代码，不依赖视觉模型。</dd>
+<dt>主要风险</dt><dd>写入晚于阶段边界：峰值须经 20 或 60 帧确认才入 bank，抓取这类短阶段可能在确认期内已推进到下一步；减速作为唯一提名信号，对物体自行移动、接触滑动不敏感。</dd>
+<dt>复现门槛</dt><dd>YAM 类 6-DoF 双臂（主从各两条）+ 顶视与双腕共 3 路相机；每任务约 100–200 条遥操作示范；π0.5 全量 SFT 30k 步、batch 32、2×A100。不需关键帧标注，但 <code>w</code>、峰值窗、不应期须按任务调。</dd>
+</dl>
+</div>
 
 <h2 id="summary">1. 核心摘要</h2>
-<p>长程机器人操作的难点不只是动作时长，而是 <em>stage ambiguity</em>：当前桌面画面可能相似，正确的下一步却取决于此前是否已经覆盖、移走、放置或替换过某个物体。保存全部视频会使视觉上下文持续膨胀；只保留最近帧则容易忘掉早期关键关系。KEMO 将历史压缩为由机器人自身交互产生的事件关键帧，而不是按固定间隔或仅按最近性取帧。</p>
-<p>它的核心链路是 <strong>kinematic candidate → causal peak → visual confirmation → ordered memory fusion</strong>。关节运动减速构成廉价、因果的候选信号；冻结的 DINOv2 再排除视觉上与已有关键帧重复的停顿。保留帧经与 π0.5 相同的 SigLIP 视觉编码器压成 token，利用带 padding mask 的 cross-attention 和门控残差融合到当前视觉表示。六个真实双臂任务、每任务 12 次试验上，论文报告聚合任务成功率 TSR 从无记忆 π0.5 的 27.8% 提升至 51.4%，阶段完成率 SCR 从 42.3% 提升至 76.4%。</p>
+<p>长程双臂操作难在阶段歧义：桌面画面可以完全相同，正确动作却取决于之前是否覆盖、移走或替换过某个物体。KEMO 不往上下文塞更多帧，而是从机器人自身运动找写入时机——关节在抓放前刻意减速，减速段的显著度峰值即候选；冻结 DINOv2 的全局图嵌入剔除与上一个关键帧过于相似的候选；剩下帧经 SigLIP 编码、4×4 池化成 16 token，按序存入容量 <code>K</code> 的库，以当前帧为 query 做 masked cross-attention，再经负偏置门控残差融回视觉表示。同一组索引复用为损失的高权重位置。判定：本专题最接近落地的一篇，检测器与策略解耦、无需关键帧标注；代价是超参按任务手调、写入带确认延迟、容量靠人工设定。</p>
 
-<h2 id="motivation">2. 研究动机</h2>
-<h3>2.1 相似观测并不意味着相同任务阶段</h3>
-<p>论文将时刻 <code>t</code> 的输入写为多相机 RGB 图像和本体状态 <code>oₜ={Iₜ,sₜ}</code>，再结合语言指令预测一个 H 步 action chunk。以 Cover Blocks 为例，桌面上仍可看到相同的杯子和积木，但如果前面已覆盖过哪些位置，下一步应操作的目标便不同。只根据当前图像的 Markov policy 无法可靠区分这类阶段。</p>
-<h3>2.2 稠密历史与短窗口各有盲点</h3>
-<p>稠密保存所有观测需要持续压缩，容易把少数决定任务进度的细节冲淡；只取固定最近窗口则会遗忘先前看见的物体—位置关系。固定间隔采样也把“时间位置”误当成“任务进度”：推理中一次重试会拉长轨迹，使与训练时同样的采样索引落到不同语义阶段。</p>
-<h3>2.3 事件而非帧是合适的写入单位</h3>
-<p>作者的假设是，抓取、放置、覆盖、释放、替换等交互附近的状态转移帧最值得保存。运动学给出低成本且无需在线 VLM 的候选，但停顿不一定产生语义变化；因此必须加视觉确认。这个“motion 提名、appearance 复核”的分工，使关键帧检测成为可因果运行的历史写入门，而不是仅把更多帧塞进上下文。</p>
+<h2 id="stage">2. 事件流水线定位</h2>
+<div class="flowline">
+<span class="on">候选生成</span><span class="part">语义确认</span><span>边界定位</span><span class="on">记忆写入</span><span>检索</span><span>评测</span>
+</div>
+<p>候选生成与记忆写入是 on：论文既定义「何时值得成为候选」（因果峰值），也定义写入形态（每帧 16 token、有序、有上限、带 mask）。语义确认标 part：视觉去重只回答「与上一个关键帧是否够不一样」，用 DINOv2 全局嵌入的余弦距离，不判断语义。边界定位缺席——关键帧是瞬时帧，没有起止；检索也不成立，读出的固定是最近 <code>K</code> 条，无 query 匹配。下游假设是 π0.5 这类 token 化 VLA，图像 patch token 可原位替换。</p>
+<table>
+<tr><th>环节</th><th>内容</th></tr>
+<tr><td>输入</td><td>3 路 RGB（顶视、左腕、右腕）+ 关节位置 <code>q_t</code> + 语言指令；在线只用 <code>t</code> 及以前。</td></tr>
+<tr><td>输出</td><td>每步显著度 <code>S_t</code>；被接受的关键帧索引 <code>k_i</code> 及其 <code>16×D</code> token 与时间位置编码。</td></tr>
+<tr><td>交给下游</td><td>至多 <code>K</code> 条有序 memory token 与二值 padding mask，作为 cross-attention 的 K/V 注入视觉编码阶段。</td></tr>
+</table>
 
-<h2 id="method">3. 方法论</h2>
-<img class="figure" src="figures/overview.png" alt="KEMO 原论文 Fig. 2 总体框架">
-<p class="caption">原论文 Fig. 2。来源：arXiv LaTeX 源码 <code>assets/overview.png</code>（非 PDF 裁图）。左侧 Keyframe Detector 从机器人状态与视觉观测选择事件帧，中间写入 Keyframe Memory Bank，右侧以 Memory Integration Module 注入 VLA。</p>
+<h2 id="problem">3. 问题与动机</h2>
+<p>Markov 策略 <code>π(a_t|o_t, ℓ)</code> 只看当前多相机图像与本体状态，信息上无法区分「杯子已被覆盖」与「尚未覆盖」。Cover Blocks 最直接：两阶段画面几乎一致，下一步该动的积木却不同。执行中的重试让问题更糟——轨迹被拉长，同一时刻可能落在与训练完全不同的阶段。</p>
+<p>已有记忆双向失效：稠密保存必须持续压缩，压缩会冲淡决定进度的细节；只留最近若干帧则丢掉「哪个物体被放到哪里」。固定间隔采样把时间索引当任务进度，一次重试就让采样位置落到别的语义阶段——Cover Blocks 上均匀采样 12 次全败，最近帧只成功 1 次。</p>
+<p>在线 VLM 分解子任务是另一条路，但每步额外推理，且错误沿控制链传播。关节运动免费、因果、不需要模型，适合作第一级提名；问题是停顿不等于状态变化，调整姿态、等夹爪闭合也会减速。KEMO 的两级门控就是为这个假阳性设计的：运动负责召回，外观负责否决。</p>
 
-<h3>3.1 记忆条件策略：保存“已发生的状态转移”</h3>
-<p>KEMO 不改变 VLA 输出 action chunk 的基本形式，而让策略条件化于历史记忆：<code>πθ(aₜ:ₜ₊H | oₜ, ℓ, Mₜ)</code>。其中 <code>Mₜ</code> 不是完整轨迹，而是截至 <code>t</code> 已检测到的一组按时间排序的事件关键帧。这样，记忆为当前预测提供“哪些阶段已经完成、之前看到过何种对象关系”的证据，而不是作为当前观察的替代品。</p>
+<h2 id="method">4. 方法拆解</h2>
+<img class="figure" src="figures/overview.png" alt="KEMO 总体框架：机器人状态与视觉观测进入关键帧检测模块，选中的帧存入记忆库，经记忆整合模块注入 VLA 主干后输出关节动作">
+<p class="caption">原论文总体框架图，取自作者 arXiv LaTeX 源码 <code>assets/overview.png</code>，非 PDF 裁图。主链路为 Robot States + Visual Obs. → Keyframe Detector（事件显著度、因果峰值、视觉去重）→ Keyframe Memory Bank → Memory Integration（检索、门控残差融合）→ VLA Backbone → 关节动作；语言指令直接进入主干。</p>
 
-<h3>3.2 事件关键帧检测：先找候选，再消除假阳性</h3>
-<img class="figure" src="figures/keyframe_detection.png" alt="KEMO 原论文 Fig. 3a 关键帧检测">
-<p class="caption">原论文 Fig. 3(a)。来源：arXiv LaTeX 源码 <code>assets/keyframe_detection.png</code>。图中保留的关键帧、普通帧与被视觉过滤的候选帧，说明运动峰值本身并不等于可写入事件。</p>
-<p><strong>运动学显著性。</strong> 设 <code>qₜ</code> 为关节位置，作者先在长度为 <code>w</code> 的滑窗内计算平均关节位移 <code>δ̄ₜ=(1/w)Σ||qₜ₋ᵢ−qₜ₋ᵢ₋₁||₂</code>，再取 <code>Sₜ=1/(1+δ̄ₜ)</code>。因此机器人在精细抓放、释放或阶段切换前减速时，<code>Sₜ</code> 升高。该分数只依赖当前及过去状态；局部峰在一个短确认窗口后被确认，故有因果运行属性，但并非零检测延迟。</p>
-<p><strong>视觉去重。</strong> 候选时刻 <code>cᵢ</code> 会与最近一次接受的关键帧 <code>kᵢ₋₁</code> 比较。冻结 DINOv2 的全局图像 embedding 给出视觉差异 <code>vᵢ=1−cos(φ(Icᵢ),φ(Ikᵢ₋₁))</code>；仅当 <code>vᵢ&gt;ε</code> 才接受候选。最后再设置最小 refractory period <code>r</code>，抑制同一次持续转移中反复写入。这里明确区分：运动减速负责召回候选，视觉差异负责抑制无状态变化的暂停或微调。</p>
+<h3>4.1 输入与时间表征</h3>
+<p>时刻 <code>t</code> 的观测为 <code>o_t = {I_t, s_t}</code>，<code>I_t</code> 含三路图像，<code>s_t</code> 为机器人状态；策略条件于语言 <code>ℓ</code> 与记忆 <code>M_t</code>，预测 <code>H = 50</code> 的 action chunk，动作为关节空间：<code>π_θ(a_{t:t+H} | o_t, ℓ, M_t)</code>。<code>M_t</code> 不是轨迹回放，而是截至 <code>t</code> 已接受关键帧的有序集合，编码「哪些阶段已完成」，与当前观测互补。论文不引入新时间戳输入，槽位自带可学习时间位置编码，表达「这是第几个被接受的阶段」，这与按固定间隔取帧有本质差别。</p>
 
-<h3>3.3 Keyframe Memory Bank：空间压缩与时间顺序</h3>
-<p>每个被接受的关键帧先经 π0.5 同源的 SigLIP 视觉编码器产生 <code>256×D</code> patch tokens；然后使用 <code>4×4</code> spatial average pooling，把每帧压为 <code>16×D</code> token。时刻 <code>t</code> 的记忆保留至多 <code>K</code> 个最近接受帧；不足 K 时用最近帧填充，但以二值 mask 遮蔽填充槽。每一槽再加可学习的 temporal position embedding，告诉模型这对应第几个已完成阶段，而不仅是视觉上相似的旧画面。</p>
+<h3>4.2 关键机制</h3>
+<p><b>运动学显著性。</b> 状态量是关节位置向量 <code>q_t</code>。在长度 <code>w</code> 的滑窗上算平均关节位移 <code>δ̄_t = (1/w) Σ_{i=0}^{w-1} ‖q_{t-i} − q_{t-i-1}‖₂</code>，再取 <code>S_t = 1/(1+δ̄_t)</code>，取值在 0 到 1 之间，完全静止时为 1。候选不是超阈点而是 <code>S_t</code> 的<b>局部极大值</b>——论文不设绝对分数阈值，只要求峰值在随后短窗内被确认。窗口按任务取 <code>w = 10 / 30 / 40</code> 帧，确认窗取 20 或 60 帧：动作切换快的三个任务用 <code>w = 10</code>，长窗任务靠平均抵消单关节抖动。</p>
+<p><b>视觉去重。</b> 候选时刻 <code>c_i</code> 与<b>上一个被接受</b>的关键帧 <code>k_{i-1}</code>（不是上一帧）比较：<code>v_i = 1 − cos(φ(I_{c_i}), φ(I_{k_{i-1}}))</code>，<code>φ</code> 为冻结 DINOv2 的全局嵌入，<code>v_i &gt; ε</code> 才接受，<code>ε = 0.05</code> 全任务共用。拒绝时参考帧不变，连续停顿不会互相刷新。之后加不应期 <code>r = 8</code> 帧；Drawer Items Replacement 取 60 帧，因其过渡更慢、误写代价更高。</p>
+<p><b>记忆构造。</b> 接受帧经 SigLIP（与 π0.5 同源）编码为 256 patch，4×4 平均池化压到 16 token。第 <code>i</code> 槽叠加可学习时间位置编码 <code>PE(i)</code> 并广播到该帧 16 个 token。库容量为最近 <code>K</code> 条，不足时用最近关键帧填充并以二值 mask 屏蔽填充槽。论文称 <code>K</code> 按任务子阶段转移数设定，未公布取值。</p>
+<p><b>注入方式。</b> 当前帧 token <code>X_t</code> 作 query，<code>K</code> 槽投影拼接为 <code>KV ∈ ℝ^{(K·16)×D}</code>，得 <code>X'_t = CrossAttn(X_t, KV, mask)</code>。输出不替换当前视觉，而走门控残差 <code>X̂_t = X_t + σ(g([X_t; X'_t])) · X'_t</code>，<code>g</code> 负偏置初始化，训练初期门近关闭以保持基座行为。<code>X̂_t</code> 直接替换图像 token 进 LM，前缀长度与 LM 结构不变。</p>
+<p><b>训练是否改主干。</b> 改动只在视觉编码阶段的旁路与门控，LM 与动作头不动。π0.5 不冻结，在示范上全量 SFT；参与检测的 DINOv2 冻结。损失复用同一组索引：<code>min_i |t − k_i| ≤ δ</code> 时 <code>w_t = λ</code>，否则为 1；<code>L = Σ_t w_t ℓ_t / Σ_t w_t</code>，<code>ℓ_t</code> 是 horizon 上的 flow-matching 速度损失，<code>δ = 3</code>，<code>λ = 8.0</code>。监督预算压在阶段转移附近，因为那里的误差会向后传。</p>
 
-<h3>3.4 记忆注入：以当前视觉为 query 的门控 cross-attention</h3>
-<img class="figure" src="figures/keyframe_memory.png" alt="KEMO 原论文 Fig. 3b 记忆融合">
-<p class="caption">原论文 Fig. 3(b)。来源：arXiv LaTeX 源码 <code>assets/keyframe_memory.png</code>。存储关键帧经编码、空间池化和时间位置编码后，作为历史 K/V 与当前视觉 query 融合。</p>
-<p>当前帧 patch tokens <code>Xₜ</code> 作为 query，K 个关键帧的池化 token 拼接为 key/value，形成 <code>X′ₜ=CrossAttn(Xₜ,KV,mask)</code>。输出不被直接替换当前视觉，而是经门控残差融合：<code>X̂ₜ=Xₜ+σ(g([Xₜ;X′ₜ]))·X′ₜ</code>。门控的负偏置初始化使训练初期接近关闭，先保留原 π0.5 的感知行为；当历史确实有用时才增大记忆贡献。融合发生在视觉编码阶段，之后送入原 VLA 的语言、状态与动作预测路径，前缀长度和语言模型结构不需要改变。</p>
+<div class="figrow">
+<div>
+<img class="figure" src="figures/keyframe_detection.png" alt="关键帧检测示意：事件显著度曲线随时间波动，星标为被确认的因果峰值，绿色保留、红色丢弃的候选帧画面对比">
+<p class="caption">原论文关键帧检测图，取自作者源码 <code>assets/keyframe_detection.png</code>。曲线为 <code>S_t</code>，星标是接受的峰值，绿线为保留帧、红线为被视觉过滤的候选帧；保留下来的候选画面高度相似，区分它们的只是相似度阈值。</p>
+</div>
+<div>
+<img class="figure" src="figures/keyframe_memory.png" alt="记忆注入示意：三路相机图像经 SigLIP 与空间池化，与记忆库中三个关键帧一并做位置编码、masked cross-attention 与门控残差融合">
+<p class="caption">原论文记忆注入图，取自作者源码 <code>assets/keyframe_memory.png</code>。上排为 VLA 主干及输入，下排为记忆库 <code>K_{t−2}, K_{t−1}, K_t</code> 经 SigLIP、空间池化、位置编码后与当前观测做 masked cross-attention 与门控残差融合。</p>
+</div>
+</div>
 
-<h3>3.5 Keyframe-consistent training：让写入事件也是重点监督位置</h3>
-<p>作者复用相同的关键帧索引，同时定义 memory 内容与训练损失权重。关键帧附近半径 <code>δ</code> 内的时刻使用权重 <code>λ&gt;1</code>，其余时刻权重为 1：<code>L=Σₜwₜℓₜ / Σₜwₜ</code>。其中 <code>ℓₜ</code> 是 action horizon 上的 flow-matching velocity loss。其逻辑是：阶段转移处的动作错误最容易传递到后续阶段，因此训练应在将来会写入记忆的时刻格外准确。该设计使“检测到什么、存什么、重点学什么”三者共享同一事件定义。</p>
+<h3>4.3 输出与在线边界</h3>
+<p><b>因果性。</b> 是因果的。<code>S_t</code> 只用 <code>[t−w, t]</code> 的关节历史；峰值确认再看 20/60 帧，但只消费后续 <code>S</code> 值，不需要未来图像的语义，也不在历史帧上跑 VLA。记忆里只有 <code>k_i ≤ t</code> 的帧。</p>
+<p><b>写入延迟。</b> 延迟等于确认窗加不应期，以帧计为 20/60 加 8（Drawer 为 60 加 60）。控制帧率未在已核验的公开材料中确认，换算秒数不可靠，工程上应直接写成控制步数。若落库时间戳取确认时刻而非峰值时刻，记忆会整体晚于真实边界；论文未说明取哪个，此点未在已核验的公开材料中确认。</p>
+<p><b>记忆长度上限。</b> 上限是条数而非时长：最多 <code>K</code> 条、每条 16 token，额外上下文不超过 <code>16K</code> 个 token，与轨迹长度无关。超过 <code>K</code> 后旧帧被挤出，早期证据丢失；<code>K</code> 的具体数值与覆盖率均未公布。</p>
+<p><b>写入不可撤销。</b> 接受帧立即入 bank，没有复核、回滚或合并接口；去重只与最后一个接受帧比较，一次误接受会同时污染参考帧与记忆内容，误差沿后续阶段累积。</p>
 
-<h2 id="exp">4. 实验与结果</h2>
-<h3>4.1 设置与指标</h3>
-<p>实验在真实 YAM 双臂系统的六个 memory-dependent 任务进行：Swap Foods、Find Block、Cover Blocks、Box Refill、Make Sandwich、Drawer Items Replacement。任务有 2–6 个计分阶段，平均 28–95 秒、830–2846 执行步；每项方法、每个任务评估 12 次，训练使用约 100–200 条 demonstration。TSR 要求所有阶段均按正确顺序完成；SCR 只计算从任务开头起连续完成的阶段，因此能反映在首次失败前推进到何处。</p>
-<h3>4.2 主结果：整体完成与阶段推进同时提升</h3>
-<table><tr><th>聚合指标（六任务）</th><th>π0.5</th><th>MemoryVLA</th><th>KEMO</th><th>相对 π0.5 的变化</th></tr><tr><td>TSR</td><td>27.8%</td><td>1.4%</td><td>51.4%</td><td>+23.6 个百分点</td></tr><tr><td>SCR</td><td>42.3%</td><td>未在摘要处汇总</td><td>76.4%</td><td>+34.1 个百分点</td></tr></table>
-<p>这组对比既说明 KEMO 更常完成整条任务，也说明其在失败前能连续推进更多子阶段。MemoryVLA 的 TSR 很低表明“加记忆”本身并不充分；选择什么历史、如何融合、以及是否让训练重点覆盖转移时刻都很关键。作者在 Drawer Items Replacement 上仍未获得完整任务成功，提示最难的物体—抽屉对应关系并未被完全解决。</p>
-<h3>4.3 选择策略消融：事件帧优于均匀与最近帧</h3>
-<table><tr><th>Cover Blocks 选择策略（关闭 loss weighting）</th><th>TSR</th><th>SCR</th></tr><tr><td>Uniform sampling</td><td>0/12（0.0%）</td><td>1.833/6（30.6%）</td></tr><tr><td>Recent frames</td><td>1/12（8.3%）</td><td>0.700/6（11.7%）</td></tr><tr><td>Event keyframes</td><td>3/12（25.0%）</td><td>2.500/6（41.7%）</td></tr></table>
-<p>均匀采样会在执行重试时与训练的时间位置错位；最近帧则丢失早期阶段证据。事件选择保持的是任务状态转移，因此在相同检索和门控融合条件下仍表现最好。</p>
-<h3>4.4 模块消融：门控和关键帧一致性监督互补</h3>
-<table><tr><th>Cover Blocks 模块设置</th><th>TSR</th><th>SCR</th><th>解释</th></tr><tr><td>无 gated fusion</td><td>0/12</td><td>0.000/6</td><td>直接相加会让历史特征压过当前场景。</td></tr><tr><td>无 loss weighting</td><td>3/12</td><td>2.500/6</td><td>事件记忆有效，但转移附近的策略精度不足。</td></tr><tr><td>完整 KEMO</td><td>9/12</td><td>5.250/6</td><td>两项机制共同带来增益。</td></tr></table>
+<h2 id="evidence">5. 证据与实验</h2>
+<p>平台为 YAM 双臂，两条 6-DoF 主臂遥操作采集、两条从臂自主执行，3 路相机（顶视、双腕）。六个任务都需按历史判阶段，每任务 2–6 个计分阶段、28–95 秒、830–2846 步，每方法每任务 12 次试验。</p>
+<table>
+<tr><th>任务</th><th>计分阶段</th><th>示范条数</th><th>平均时长</th><th>平均步数</th></tr>
+<tr><td>Swap Foods</td><td>2</td><td>约 100</td><td>28 s</td><td>830</td></tr>
+<tr><td>Find Block</td><td>4</td><td>约 160</td><td>40 s</td><td>1186</td></tr>
+<tr><td>Cover Blocks</td><td>6</td><td>约 200</td><td>50 s</td><td>1480</td></tr>
+<tr><td>Box Refill</td><td>4</td><td>约 150</td><td>50 s</td><td>1480</td></tr>
+<tr><td>Make Sandwich</td><td>4</td><td>约 100</td><td>54 s</td><td>1616</td></tr>
+<tr><td>Drawer Items Replacement</td><td>4</td><td>约 120</td><td>95 s</td><td>2846</td></tr>
+</table>
+<p>TSR 要求全部阶段按序完成；SCR 只统计从开头起连续完成的阶段平均数，失败后不计，反映首次失败前推进到哪。变化为相对无记忆 π0.5 的百分点差。</p>
+<table>
+<tr><th>聚合指标（六任务）</th><th>π0.5</th><th>MemoryVLA</th><th>KEMO</th><th>相对 π0.5</th></tr>
+<tr><td>TSR</td><td>27.8%</td><td>1.4%</td><td>51.4%</td><td>+23.6</td></tr>
+<tr><td>SCR</td><td>42.3%</td><td>未在摘要处汇总</td><td>76.4%</td><td>+34.1</td></tr>
+</table>
+<p>MemoryVLA 的 1.4% 是关键对照：它有记忆与长程上下文却几乎完不成任务，说明「加记忆」本身不产生收益，选什么历史、如何融合、训练是否覆盖转移时刻才是变量。作者也报告 Drawer Items Replacement 仍未取得完整成功。</p>
+<table>
+<tr><th>Cover Blocks 配置</th><th>TSR</th><th>SCR（满分 6）</th></tr>
+<tr><td>均匀采样</td><td>0/12</td><td>1.833</td></tr>
+<tr><td>最近帧</td><td>1/12</td><td>0.700</td></tr>
+<tr><td>事件关键帧（去掉损失加权）</td><td>3/12</td><td>2.500</td></tr>
+<tr><td>去掉门控融合</td><td>0/12</td><td>0.000</td></tr>
+<tr><td>完整 KEMO</td><td>9/12</td><td>5.250</td></tr>
+</table>
+<p>前两行隔离选帧规则：门控与容量不变，仅换成事件帧就把 TSR 从 0/12 拉到 3/12。后两行读模块：去掉门控融合后 TSR 与 SCR 双双归零，说明直接相加会让历史压过当前观测，策略连第一阶段都推不动；去掉损失加权仍到 3/12，说明记忆有效、缺的是转移附近的动作精度。证据边界要说明：6 个任务、每任务 12 次真机试验，样本量小，单任务差异易受初始位形影响，论文未报告多种子方差。</p>
 
-<h2 id="limits">5. 优势与局限</h2>
-<table><tr><th>有依据的优势</th><th>作者限制与迁移注意点</th></tr><tr><td><ul><li>用 robot state 产生候选、以视觉确认，检测成本低且可因果执行。</li><li>关键帧检测、记忆构造和 loss weighting 共用事件索引，目标一致。</li><li>门控融合保留当前观察在决策中的主导地位，而非让历史覆盖当前状态。</li><li>以真实双臂长程成功率验证，而不只报告视频检索或边界 F1。</li></ul></td><td><ul><li>窗口长度 <code>w</code>、峰值确认窗、refractory period <code>r</code> 需要按任务调参。</li><li>记忆容量 K 依据预期 stage transition 数手工设定，尚不是自适应容量。</li><li>运动学减速对外部物体自行变化、纯视觉语义变化和相机变化不一定敏感。</li><li>视觉去重使用冻结 DINOv2 的全局 embedding，不等同于对象级关系、接触或语言条件的状态理解。</li></ul></td></tr></table>
+<h2 id="fit">6. 优点、局限与 VLA 适配</h2>
+<div class="duo">
+<div><h4>可迁移</h4><p>检测器完全在策略之外：只吃关节位置，不需训练与标注，不与 VLA 版本耦合，可整体搬到任何位置控制手臂。写入成本可控，每帧 16 token，容量按条数计。门控残差加负偏置初始化保证改造初期不退化，这比融合结构本身更重要。同一索引同时决定记忆内容与损失权重，检测精度可从训练曲线直接读出。</p></div>
+<div><h4>不成立的前提</h4><p>减速假设依赖操作者在转移前刻意放慢，这在遥操作、位置控制、关节空间动作下成立；换成速度控制、第一视角视频或高频闭环时，减速段会被平滑掉。视觉去重只看全局嵌入，对局部关系变化、遮挡、机械臂挡住相机都不敏感。<code>K</code> 需预先知道子阶段数，任务变长要重设；三个超参按任务手调，跨任务没有自动化方案。</p></div>
+</div>
+<p>延迟要按控制周期算，而非视频帧率：确认窗 20 帧可能已覆盖整个抓取阶段，写下的记忆描述「刚刚完成」，策略需要的是「正在进行」。最小改造是把确认窗缩到 5–8 个控制步，并把落库时间戳改回峰值时刻，代价是假阳性上升，需用夹爪开合、接触力或末端速度过零补第二确认。记忆侧先不换结构，固定 <code>K</code> 等于阶段数、确认增益后再谈自适应容量。</p>
 
-<h2 id="conclusion">6. 总结</h2>
-<p>KEMO 将“历史记忆”落到一个可执行的问题：何时值得写、写下什么、如何让当前策略使用它。其最值得复用的结构是 <strong>motion candidate + visual confirmation + ordered memory fusion</strong>，而非特定的阈值或某个视觉编码器。论文的关键实验证明，写入事件帧比均匀帧或最近帧更适合长程操作，但也表明门控融合和关键帧一致性训练不可缺少。</p>
-<p>对后续 VLA 历史关键事件检测，可以在 KEMO 的双信号上加入 object relation、gripper/contact、instruction change 和不确定性，形成多证据 commit gate；再把被确认的事件帧压缩为跨层 KV 或段级记忆。这样候选、确认、写入与检索分别可测，也更容易定位失败究竟来自检测、存储还是控制。</p>
-
-<h2>图像来源与核验</h2>
-<p>本页只使用作者 arXiv LaTeX 源码中的 <code>assets/overview.png</code>、<code>assets/keyframe_detection.png</code>、<code>assets/keyframe_memory.png</code>。已逐图确认其为完整架构/机制原图，未使用 PDF 裁图，因而不存在正文、页眉页脚、页码或页面图注被带入的问题。实验图未保存、未插入。</p>
-</article></main>
-</body></html>
+<h2 id="repro">7. 落地清单</h2>
+<ul class="checklist">
+<li>只搬运动学峰值检测器：按自己的控制频率重算 <code>w</code>，用局部极大加不应期出候选，先在离线回放上量它与人工阶段边界的时间偏差。</li>
+<li>把峰值确认窗从帧数改成控制步数，为每个关键帧单独记录确认延迟，落库时间戳取峰值时刻而非确认时刻。</li>
+<li>用冻结 DINOv2 全局嵌入做去重，<code>ε</code> 从 0.05 起扫，并联一个夹爪开合或接触信号作为第二确认，降低对单一视觉判据的依赖。</li>
+<li>记忆侧只实现 4×4 池化的 16 token/帧 与 padding mask，先令 <code>K</code> 等于任务阶段数，做 K 增减的敏感性测试后再考虑动态容量。</li>
+<li>复现训练侧时先关掉损失加权跑一遍，确认增益来自记忆而非监督重分配，再开 <code>λ = 8.0</code>、<code>δ = 3</code>。</li>
+</ul>
+<div class="srcbox">
+<p><b>来源：</b>arXiv:2606.23589v1（2026-06-22 提交）<a href="https://arxiv.org/abs/2606.23589">abs 页</a>；<a href="https://hatty-z.github.io/KEMO/">作者项目主页</a>。正文第 3 节与附录 C、D 提供检测超参、训练配置与任务表，表 1–表 6 提供主结果与消融数值。</p>
+<p><b>图像说明：</b>三张图均为作者 arXiv LaTeX 源码原图（<code>assets/overview.png</code>、<code>assets/keyframe_detection.png</code>、<code>assets/keyframe_memory.png</code>），未做内容改动，非 PDF 裁图。</p>
+</div>
+<p class="pagefoot">相关页面：<a href="../hierarchical-event-memory/index.html">层级事件记忆 · 写入预算与合并</a> · <a href="../flowgebd/index.html">FlowGEBD · 边界检测</a> · <a href="../cag-qil/index.html">CAG-QIL · 因果事件记忆</a> · <a href="../../index.html">返回总站</a></p>
+</article>
+</div>
+</main>
+</body>
+</html>

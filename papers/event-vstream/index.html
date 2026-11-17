@@ -3,84 +3,144 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Event-VStream｜论文精读</title>
+<title>Event-VStream｜专题一 · 历史关键事件检测</title>
 <link rel="stylesheet" href="../../style.css">
 </head>
 <body>
 <header>
 <div class="wrap">
-<div class="eyebrow">P1 · Event-driven Streaming Video-LLM</div>
-<h1>Event-VStream</h1>
-<p>用事件边界取代固定帧率处理，并将事件压缩进持久记忆</p>
-<nav>
-<a href="../../index.html">← 返回导航</a>
-<a href="../index.html">P1 总览</a>
-</nav>
+<div class="crumb"><a href="../../index.html">VLA 历史记忆</a> / <a href="../index.html">专题一 · 历史关键事件检测</a> / P1-6</div>
+<div class="eyebrow">Paper Deep Read · Event VLM</div>
+<h1>Event-VStream: Event-Driven Real-Time Understanding for Long Video Streams</h1>
+<p>Zhenghui Guo、Yuanbin Man、Junyuan Sheng 等 · arXiv preprint（2026-01）｜
+<a href="https://arxiv.org/abs/2601.15655">arXiv</a> · <a href="https://arxiv.org/html/2601.15655v1">论文页</a>
+</p>
 </div>
 </header>
 <main>
+<div class="doc-layout">
+<aside class="doc-side">
+<nav class="sidenav">
+<h4>本页目录</h4>
+<a href="#summary">1 核心摘要</a>
+<a href="#stage">2 事件流水线定位</a>
+<a href="#problem">3 问题与动机</a>
+<a href="#method">4 方法拆解</a>
+<a href="#evidence">5 证据与实验</a>
+<a href="#fit">6 优点、局限与 VLA 适配</a>
+<a href="#repro">7 落地清单</a>
+<div class="side-extra">事件驱动记忆写入的完整闭环参考，但记忆只服务描述与问答</div>
+</nav>
+</aside>
 <article>
-<p class="meta">Zhenghui Guo et al. · arXiv 2026 · <a href="https://arxiv.org/abs/2601.15655">论文</a> · <a href="https://arxiv.org/pdf/2601.15655">PDF</a>
-</p>
-<div class="toc">
-<a href="#summary">摘要</a>
-<a href="#motivation">动机</a>
-<a href="#method">方法</a>
-<a href="#results">实验</a>
-<a href="#limits">优劣</a>
-<a href="#takeaway">总结</a>
+<div class="verdict">
+<div class="vt">决策卡</div>
+<p>把「何时调用 VLM、何时写记忆」统一交给事件边界，可在严格因果的流式设定下把长视频理解压到 0.1 s/token 以内；代价是记忆只剩事件级嵌入，细节不可回放。</p>
+<dl>
+<dt>最小可复用件</dt><dd>三线索打分 + 迟滞间隔的事件触发调度器，连同 merge-or-append 写入规则</dd>
+<dt>主要风险</dt><dd>边界由手工权重与阈值决定，迁到机器人域后误触发会直接变成错误记忆写入</dd>
+<dt>复现门槛</dt><dd>单张 RTX 6000 Ada 可跑到约 17 FPS；但多数融合权重与合并阈值未公布，需自行标定</dd>
+</dl>
 </div>
+
 <h2 id="summary">1. 核心摘要</h2>
-<p>长视频流上的 VLM 一面重复处理相似帧，一面又会因 cache 剪枝忘掉关键上下文。Event-VStream 将连续帧动态分组为语义连贯事件，以 motion、语义与预测线索共同检测状态转移；只有边界到来才触发语言生成和 memory 更新。原文报告在 OVOBench-Realtime 上比 VideoLLM-Online-8B 高 10.4 分，在两小时 Ego4D 流评测上约有 70% GPT-5 偏好胜率。</p>
-<h2 id="motivation">2. 研究动机</h2>
-<p>固定间隔采样将“擦桌子的连续 20 帧”和“拿起杯子的关键变化”同等对待：前者浪费算力，后者若被裁掉又会造成记忆断裂。作者观察到 motion peak 往往先于语义相似度下降，因此边界不能只看像素运动或只看语义漂移，而应融合多种迟早不同的信号。</p>
-<h2 id="method">3. 方法论</h2>
-<object class="figure" data="figures/fig2_architecture.pdf" type="application/pdf" aria-label="Event-VStream Figure 2 architecture">
-</object>
-<p class="caption">Figure 2。作者 arXiv LaTeX 源码 <code>figs/Figure2_main.pdf</code>：event-centric streaming inference。</p>
-<h3>3.1 事件触发而非定时触发</h3>
-<p>流入帧先生成视觉/语义特征并估计变化。motion cue 提供早期候选，semantic cue 判断内容是否真的转移，predictive cue 评估当前事件是否仍可由已有状态解释。满足事件转换条件时关闭当前事件、开启新事件；否则继续把帧聚合到当前事件。</p>
-<h3>3.2 Persistent memory 与推理</h3>
-<p>闭合事件的 embedding 被 consolidation 后写入 persistent memory；语言模块只在事件边界调用，而不是每一批帧都重复解码。由此 memory 的基本单位是“事件”，不是帧或 KV token。这一点与 VLA 的关键事件写入目标最直接一致。</p>
-<h3>3.3 三类线索的时序分工</h3>
-<p>motion 是低延迟的候选信号：手、物体或镜头突然运动时，它可先提示“可能正在切换”。semantic similarity 再判断视觉语义是否已从当前事件漂移；predictive cue 则问现有事件表示还能否解释新帧。作者给出的动机实验指出 motion spike 常先于语义相似度下降，因此只等语义变化会晚、只凭运动又会把同一事件内部的剧烈动作错分。三者融合的价值正在于这类异步性。</p>
-<h3>3.4 事件生命周期</h3>
-<p>帧首先加入正在累积的 event；当边界条件满足，当前 event 被关闭并聚合为一个 embedding，经 consolidation 写入 persistent memory，然后语言生成/回答模块在这个事件级状态上工作，新帧进入下一个 event。论文的节省来自减少 VLM 解码触发次数与长期稠密 frame token，而不是声称完全不编码视频帧。原文没有把该记忆声明为可无损回放的原始视频缓存。</p>
-<h3>3.5 与 VLA memory 的最小映射</h3>
-<p>可把视觉 motion 替成末端速度、gripper 开闭、接触力，把 semantic drift 替成图像—指令或状态 embedding 变化，把 predictive cue 替成当前子策略的预测误差。此映射是本文作者机制的 VLA 推论，不是论文已验证的机器人实验；因此仍需要单独测写入 recall、误写率与任务恢复率。</p>
-<h2 id="results">4. 实验与结果</h2>
+<p>长视频流上的 VLM 有两个对称的失效：固定间隔解码在静止片段里重复生成，缓存剪枝又在状态切换时丢掉关键上下文。Event-VStream 把连续视频切成离散、语义连贯的事件，用运动、语义漂移与一步预测误差三路线索打分，超过自适应阈值即判定状态转移；只有边界到来才调用语言模型并写入持久记忆。记忆不是原始帧、KV cache 或文本摘要，而是 L2 归一化的事件级视觉嵌入，按 merge-or-append 规则合并冗余事件。原文报告 OVOBench-Realtime 28.15 分，较 VideoLLM-Online-8B 高 10.4 分；两小时 Ego4D 流上维持约 70% 的 GPT-5 胜率，全程 sub-0.1 s/token。判定：这是目前最接近「事件驱动记忆写入」完整闭环的流式 VLM 参考实现，但它的记忆服务描述与问答，不服务动作。</p>
+
+<h2 id="stage">2. 事件流水线定位</h2>
+<div class="flowline">
+<span>候选生成</span><span class="part">语义确认</span><span>边界定位</span><span class="on">记忆写入</span><span>检索</span><span>评测</span>
+</div>
+<p>本工作把「记忆写入」做成主循环的一等公民，「语义确认」只作为三路打分中的一项参与边界判定。上游假设已有逐帧视觉编码器，下游假设存在可按嵌入检索的事件库，因此它不解决边界标注，而是解决边界出现之后如何压缩并留存。</p>
 <table>
 <tr>
-<th>评测</th>
-<th>原文报告</th>
-<th>含义</th>
+<th>环节</th>
+<th>内容</th>
 </tr>
 <tr>
-<td>OVOBench-Realtime</td>
-<td>相对 VideoLLM-Online-8B +10.4 分</td>
-<td>事件分组同时改善实时理解，而非只减少帧数。</td>
+<td>输入</td>
+<td>连续视频帧与逐帧视觉嵌入 <code>f_t</code>（L2 归一化），不使用未来帧</td>
 </tr>
 <tr>
-<td>长 Ego4D（2 小时）</td>
-<td>约 70% GPT-5 win rate</td>
-<td>持久事件记忆对长时程问答仍保留有效上下文。</td>
+<td>输出</td>
+<td>事件 token <code>E_k</code>、事件库 <code>M</code>、边界处的语言输出 <code>y_k</code></td>
 </tr>
 <tr>
-<td>对比 Flash-VStream-7B</td>
-<td>表现接近</td>
-<td>作者强调通用 LLaMA-3-8B 文本骨干也能取得有竞争力表现。</td>
+<td>交给下游</td>
+<td>归一化事件嵌入序列与检索接口 <code>Retrieve(M, E_k)</code></td>
 </tr>
 </table>
-<p>以上为论文摘要/实验节给出的代表性比较；GPT 偏好不是与标注 F1 可互换的客观边界指标，应和候选召回、延迟、控制成功率分开报告。</p>
-<h3>4.1 结果的有效解释范围</h3>
-<p>OVOBench-Realtime 的 +10.4 分支持事件调度对实时视频理解有益；两小时 Ego4D 的约 70% GPT-5 win rate 则支持长时上下文体验更好。两者都不是事件边界标注 F1，也不是机器人成功率。尤其评审式 win rate 依赖评估模型，因此部署到 VLA 前仍应增加可复现的时延、memory budget 与关键状态召回指标。</p>
-<h2 id="limits">5. 优势与局限</h2>
-<p>
-<b>优势：</b>检测、计算调度与记忆更新围绕同一事件单位；多线索减少仅靠 motion 或语义的误触发；直接面向长流 VLM。<br>
-<b>局限：</b>论文评测主要是视频理解，不等同机器人闭环控制；边界阈值和 event consolidation 的失败传播需在新域验证；GPT 评判带有模型评审依赖。</p>
-<h2 id="takeaway">6. 总结</h2>
-<p>Event-VStream 是最接近目标系统级设计的一篇：关键不是“多存几帧”，而是以事件为原子统一采样、推理和长期记忆。落到 VLA 时，应再把机器人状态、接触和动作 phase 纳入其状态转移证据。</p>
+
+<h2 id="problem">3. 问题与动机</h2>
+<p>固定间隔采样的问题不是「帧太多」，而是采样点与状态变化无关：擦桌子的二十帧被均匀取样，白付解码成本；拿起杯子的两帧若落在采样间隔之间，则被整段丢掉，后续问答再也找不到这个状态。缓存剪枝路线把「保留多少 token」当成预算问题，但淘汰判据是注意力分数或时间距离，无法区分「低显著但不可替代」的上下文，例如任务开始时指定的目标物体，往往在被剪掉之后才被问到。</p>
+<p>作者的另一条观察是时序错位：运动尖峰比语义漂移早约 2 s 出现。只看语义会晚，等它触发时状态已切换完毕；只看运动又会把同一事件内部的剧烈动作切碎。这两点共同决定了两个设计选择：必须多线索融合，且生成与写记忆只能发生在边界。</p>
+
+<h2 id="method">4. 方法拆解</h2>
+<img class="figure" src="figures/fig2_architecture.png" alt="Event-VStream 事件驱动流式推理架构：逐帧编码后由运动、语义与预测三路线索打分，边界处聚合事件 token、更新事件记忆并调用语言模型">
+<p class="caption">图 2：事件驱动的流式推理主循环。原图 PDF 见 <code>figures/fig2_architecture.pdf</code>（对应作者 LaTeX 源码 <code>figs/Figure2_main.pdf</code>）。</p>
+<h3>4.1 输入与时间表征</h3>
+<p>逐帧视觉编码 <code>f_t = Enc_v(x_t)</code>，所有嵌入做 L2 归一化。当前事件用一个运行表示 <code>f̄</code> 概括，按指数滑动平均更新：<code>f̄ ← (1-ρ)f̄ + ρf_t</code>。因此「当前事件」是历史嵌入的指数加权摘要，旧帧影响随 ρ 衰减，而不是固定窗口平均。这一形式决定了它的内存是常数级的，也让回看只可能发生在事件库层面。</p>
+<h3>4.2 关键机制</h3>
+<p>边界打分把三路信号线性组合后过 sigmoid：<code>E_t = w_sem(1-s_t) + w_mot·ñ_t + w_pred·c_t</code>，<code>p_t = σ(E_t)</code>，<code>b_t = 1[p_t &gt; τ_t]</code>。语义项 <code>s_t = cos(f_t, f̄)</code> 确认表示层面的真实转移，并压掉瞬时运动噪声；运动项取平均光流范数或帧差能量，滑窗 min-max 归一化为 <code>ñ_t</code>，负责提前预警；预测项 <code>ĉ_t = ||g_θ(f_{t-1}) - f_t||²</code> 用一个三层 MLP 估计「新帧还能否被当前状态解释」，该 MLP 以 next-embedding 自监督训练后冻结，只用前一帧，因此不窥视未来。</p>
+<p>阈值自适应于近期运动方差：<code>τ_t = τ_0(1 + η·Var(m_{t-w:t}))</code>，原文给出的取值为 <code>τ_0 = 0.96</code>、<code>η = 0.03</code>；画面抖动大时抬高门槛，避免把相机晃动当成事件。另有迟滞策略：距上一边界不足 <code>Δ_min</code> 的候选并入当前事件，超过 <code>Δ_max</code> 仍无边界的则发一次 keep-alive 更新，防止长时间沉默。</p>
+<p>边界触发后按顺序做三件事。把段内帧嵌入按时间衰减权重池化为事件 token：<code>E_k = Σ w_i f_i / Σ w_i</code>，<code>w_i ∝ exp(-|t_i - t_b|/σ)</code>；用 merge-or-append 更新记忆库，若 <code>cos(E_k, E_last) &gt; γ_mem</code> 则 <code>E_last ← (1-λ)E_last + λE_k</code>，否则追加新槽位；最后执行 <code>y_k = LM(E_k, Retrieve(M, E_k))</code>。非边界帧只更新 <code>f̄</code>，不产生任何文本。</p>
+<h3>4.3 输出与在线边界</h3>
+<p>设定是严格因果的：单向前向，不使用未来帧，预测器也只回看一帧。允许回看已压缩记忆，但检索对象是事件嵌入而非原始帧，被合并掉的信息无法恢复。记忆没有显式的容量上限与淘汰规则，控制增长的只有事件级抽象与 merge-or-append 合并；原文未报告 <code>γ_mem</code>、<code>λ</code>、<code>ρ</code> 与三路融合权重的取值，这是复现的主要不确定项。</p>
+<p>延迟方面，全程维持 sub-0.1 s/token，多数 token 落在 0.05–0.08 s，两小时流上无明显漂移，单张 RTX 6000 Ada 上约 17 FPS；对照 Flash-VStream 稳态为 0.03–0.04 s，VideoLLM-Online 贴近 0.1 s 且在效率测试中约 300 s 后 OOM。显存占用的绝对值（GB）未在已核验的公开材料中确认。</p>
+
+<h2 id="evidence">5. 证据与实验</h2>
+<p>主结果在 OVOBench-Realtime 上（Table 1）：本方法 2 fps 解码得 28.15，VideoLLM-Online-8B 同为 2 fps 得 17.73，差值即摘要所称的 +10.4；Flash-VStream-7B 以 1 fps 得 28.37，本方法仅低 0.83 分，且只用了通用 LLaMA-3-8B 文本骨干。长时程在 Ego4D 两小时流上以 GPT-5 胜率评估，约 70%，末段最高 88.3%。</p>
+<table>
+<tr>
+<th>消融（Table 2）</th>
+<th>字幕胜率 %</th>
+<th>时延 s</th>
+</tr>
+<tr>
+<td>完整模型</td>
+<td>68.1</td>
+<td>0.093</td>
+</tr>
+<tr>
+<td>去运动线索</td>
+<td>11.8</td>
+<td>0.190</td>
+</tr>
+<tr>
+<td>去语义线索</td>
+<td>37.5</td>
+<td>0.173</td>
+</tr>
+<tr>
+<td>去预测线索</td>
+<td>46.7</td>
+<td>0.187</td>
+</tr>
+</table>
+<p>三路线索缺任一项都会同时损失胜率与延迟，其中去运动项降幅最大，说明早于语义的预警信号承担了主要候选生成职责。需要留意，正文称「去语义项跌幅最大」，与表中去运动项的 11.8 不一致，两者统计口径可能不同，引用前应回原表脚注核对。这些数字只支持「事件调度对实时视频理解有效」，不构成边界检测 F1，也不构成机器人任务成功率；GPT-5 胜率是模型评审，与标注指标不可互换。</p>
+
+<h2 id="fit">6. 优点、局限与 VLA 适配</h2>
+<div class="duo">
+<div><h4>可迁移</h4><p>三线索打分、迟滞间隔与 merge-or-append 构成一个与骨干无关的调度层，可直接包在任意 VLA 视觉编码器外。EMA 运行表示与一步预测误差都是 O(d) 开销，不增加 VLM 调用次数，这是它能压住延迟的根本原因。</p></div>
+<div><h4>不成立的前提</h4><p>视频里的「语义事件」由镜头与物体运动定义，机器人任务的成功由接触、力与任务进度定义。论文的边界判据不含动作条件，也没有闭环反馈，边界判对不等于子任务完成。记忆只有视觉嵌入，缺本体状态与动作历史，无法直接支撑控制。</p></div>
+</div>
+<p>能否直接用于 VLA，取决于两个频率的差距。论文的 0.05–0.08 s/token 是每个输出 token 的延迟，一次边界解码通常要生成多个 token，实际触发周期在几百毫秒量级；而常见操作策略的控制周期是 10–50 ms（20–100 Hz），差一个数量级以上。因此 VLM 只能放在慢速语义层，不能进控制回路；调度器则应跑在控制频率上，用本体速度、夹爪开合与末端接触力替代光流、语义漂移与视觉预测误差，这三类信号比图像便宜且无镜头运动干扰。</p>
+<p>最小可复用件是「事件触发调度器」而不是「摘要写入器」。调度器只依赖轻量特征与阈值，可以脱离 VLM 单独验证误触发率与漏触发率，改造成本低；摘要写入器的质量取决于嵌入空间与生成模型，一旦写错就污染后续检索，且它的收益只有在长时程任务上才显现。合理顺序是先固化调度器与写入接口，再替换摘要器。</p>
+
+<h2 id="repro">7. 落地清单</h2>
+<ul class="checklist">
+<li>用本体速度、夹爪开合与末端力构造三个低延迟线索，替换光流、语义漂移与视觉预测误差，先离线标定阈值与迟滞区间。</li>
+<li>在同一视觉编码器上实现 EMA 运行事件表示与 merge-or-append 写入，记录每次写入的触发线索与相似度，便于回溯误写。</li>
+<li>把调度器与 VLM 调用拆成两个频率，调度器跟随控制周期，VLM 只在边界触发，测量队列积压与最坏时延。</li>
+<li>为事件库补上容量上限与淘汰规则（原文未给出），按任务阶段或时间衰减淘汰，并测长时程召回率。</li>
+<li>在真实任务上同时报告边界 F1、误写率、任务成功率与端到端延迟，不要只用主观偏好评分。</li>
+</ul>
+<div class="srcbox">
+<p><b>来源：</b>arXiv abs 页 https://arxiv.org/abs/2601.15655（v1，2026-01-22 提交）；HTML 全文 https://arxiv.org/html/2601.15655v1（§4.2 公式 1–4、§4.4 Algorithm 1 与迟滞策略、Table 1–2、§5.3.1 Figure 8 时延测试）。作者未公开代码仓库。</p>
+<p><b>图像说明：</b><code>figures/fig2_architecture.png</code> 由作者 LaTeX 源码 Figure 2 原图渲染，原图 PDF 见 <code>figures/fig2_architecture.pdf</code>。</p>
+</div>
+<p class="pagefoot">相关页面：<a href="../motion-aware-ssl/index.html">Motion-Aware Self-Supervision</a> · <a href="../hierarchical-event-memory/index.html">Hierarchical Event Memory</a> · <a href="../kemo/index.html">KEMO</a> · <a href="../../index.html">返回总站</a></p>
 </article>
+</div>
 </main>
 </body>
 </html>

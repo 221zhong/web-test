@@ -3,83 +3,124 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>MATR｜论文精读</title>
+<title>MATR｜专题一 · 历史关键事件检测</title>
 <link rel="stylesheet" href="../../style.css">
 </head>
 <body>
 <header>
 <div class="wrap">
-<div class="eyebrow">P1 · Memory-Augmented On-TAL</div>
-<h1>MATR：Memory-Augmented Transformer</h1>
-<p>选择性历史队列 + 先终点、后起点的实例解码</p>
-<nav>
-<a href="../../index.html">← 返回导航</a>
-<a href="../index.html">P1 总览</a>
-</nav>
+<div class="crumb"><a href="../../index.html">VLA 历史记忆</a> / <a href="../index.html">专题一 · 历史关键事件检测</a> / P1-4</div>
+<div class="eyebrow">Paper Deep Read · 选择性 memory</div>
+<h1>Online Temporal Action Localization with Memory-Augmented Transformer</h1>
+<p>Youngkil Song, Dongkeun Kim, Minsu Cho, Suha Kwak · POSTECH · ECCV 2024｜
+<a href="https://arxiv.org/abs/2408.02957">arXiv</a> · <a href="https://cvlab.postech.ac.kr/research/MATR/">项目页</a> · <a href="https://github.com/SKH-CJH/MATR">代码</a>
+</p>
 </div>
 </header>
 <main>
+<div class="doc-layout">
+<aside class="doc-side">
+<nav class="sidenav">
+<h4>本页目录</h4>
+<a href="#summary">1 核心摘要</a>
+<a href="#stage">2 事件流水线定位</a>
+<a href="#problem">3 问题与动机</a>
+<a href="#method">4 方法拆解</a>
+<a href="#evidence">5 证据与实验</a>
+<a href="#fit">6 优点、局限与 VLA 适配</a>
+<a href="#repro">7 落地清单</a>
+<div class="side-extra">「选择性写入 + 终点条件化回溯」的最小样本，也是记忆容量取舍的唯一 P1 消融来源。</div>
+</nav>
+</aside>
 <article>
-<p class="meta">Youngkil Song et al. · POSTECH · ECCV 2024 · <a href="https://arxiv.org/abs/2408.02957">arXiv</a> · <a href="https://skhcjh231.github.io/MATR_project/">项目页</a> · <a href="https://github.com/SKH-CJH/MATR">代码</a>
-</p>
-<div class="toc">
-<a href="#summary">摘要</a>
-<a href="#motivation">动机</a>
-<a href="#method">方法</a>
-<a href="#results">实验</a>
-<a href="#limits">优劣</a>
-<a href="#takeaway">总结</a>
+<div class="verdict">
+<div class="vt">决策卡</div>
+<p>能拿到一条「按需写入、先终点后起点」的在线实例流水线；代价是实例必须等到终点可见才能提交，提交延迟下限就是动作时长。</p>
+<dl>
+<dt>最小可复用件</dt><dd>flag 门控的 FIFO 片段记忆（<code>[FLAG]</code> token + BCE，阈值 0.5），加终点 embedding 条件化的起点回溯头：<code>Lm+2</code> 个时间区先分类、再在区内回归偏移。</dd>
+<dt>主要风险</dt><dd>漏写不可恢复。flag 判 0 的片段直接丢弃，其起点之后再无证据可取；动作长于记忆覆盖范围时起点只能退化到最早一块历史。</dd>
+<dt>复现门槛</dt><dd>冻结的 TSN / I3D 特征 + 实例级起止与类别标注；THUMOS14 配置 192.8M 参数、167.1 ms 一步，单卡可训可跑。</dd>
+</dl>
 </div>
+
 <h2 id="summary">1. 核心摘要</h2>
-<p>MATR 面向只能看到当前 segment 的 On-TAL。它不把所有历史保留，而用 flag 预测选择值得保存的 segment 表征，形成 memory queue；当前段先判断动作是否在此结束，再去队列中寻找匹配起点。类别 query 与边界 query 分离，避免将开始和结束硬绑到同一个 decoder。THUMOS14 平均 mAP 相比此前 On-TAL 最优提高 4.9 个百分点，MUSES 提高 0.7 个百分点（Table 1）。</p>
-<h2 id="motivation">2. 研究动机</h2>
-<p>固定输入段越短，成本低却可能看不到动作开始；段越长则计算增加且需按数据集调参。更关键的是，当前段内可以观测到结束，却未必能回看起点。作者把时间不对称性显式化：结束从当前找，开始从有选择的历史找。</p>
-<h2 id="method">3. 方法论</h2>
-<object class="figure" data="figures/fig2_architecture.pdf" type="application/pdf" aria-label="MATR Figure 2 architecture">
-</object>
-<p class="caption">Figure 2。作者 arXiv LaTeX 源码 <code>figures/overall_framework.pdf</code>：memory-augmented encoder 与 instance decoding。</p>
-<h3>3.1 选择性 memory queue</h3>
-<p>每个输入 segment 先经 segment encoder；flag token 预测它是否含对未来定位有价值的信息，仅被选中的特征入队。队列有长度上限，故不是稠密回放缓存。memory positional encoding 保留历史段的位置线索。</p>
-<h3>3.2 解耦实例解码</h3>
-<p>end decoder 查询当前段，给出正在结束的动作；start decoder 则从 memory queue 取样，回溯对应开始位置。两类 query 连同类别 query 由三个 head 产生 end、start、class 结果，并端到端以分类与边界损失训练。论文消融显示把 start/end 改为单 decoder，平均 mAP 从 49.5 降到 42.7。</p>
-<h3>3.3 从输入到提交：一次在线迭代实际做了什么</h3>
-<p>设第 <i>t</i> 次迭代的当前段特征为 S<sub>t</sub>。它首先和已保留的 memory token 一起进入 memory-augmented video encoder；但是，当前段并不自动写入队列。flag head 先判断 S<sub>t</sub> 是否值得成为未来定位的历史，只有正例才入队，满队时由队列策略保持固定预算。因而该模块解决的是“存什么”，不是“把全部历史再注意力一次”。</p>
-<p>接着 instance decoder 以两组不同的查询工作：end query 只面向当前可见段，预测“某实例现在是否结束、结束在哪里”；若有结束候选，start query 才从 memory 中的历史段采样并估计其开始点。分类 head 同时为该实例给出类别。论文的这种先终后始顺序并非工程细节：在线时结束在当前可见、开始可能已经离开滑窗，二者的可观测域本来不对称。</p>
-<h3>3.4 训练与推理边界</h3>
-<p>训练以实例类别和起止边界监督三个 head；论文采用 focal loss 做分类，边界损失与其共同优化，所有损失系数设为 1。THUMOS14 用冻结的双流 TSN RGB/flow 特征，MUSES 用冻结的 I3D RGB 特征，故表中的改善应理解为定位/记忆设计的改善，而不是重新端到端训练视觉 backbone。推理时只读取当前 segment 与此前已入队的 token，不能回看未来帧或改写已产生的输出。</p>
-<h2 id="results">4. 实验与结果</h2>
+<p>On-TAL 的既有做法每一轮只吃一个固定长度片段：片段短则看不到动作起点，片段长则算力上升、还要为每个数据集重调长度。MATR 把「看多远」从输入尺寸里拆出来：片段经 3 层 encoder 编码后，由可学习 <code>[FLAG]</code> token 判断它是否与任一动作实例有帧重叠，命中才写入 FIFO 记忆队列；实例解码分两级，end decoder 只看当前片段定位正在结束的动作，其输出 embedding 再作为 start decoder 的 query，去记忆队列回溯起点。起点不再直接回归，而是先分到 <code>Lm+2</code> 个时间区、再在区内回归偏移。THUMOS14 平均 mAP 49.5、MUSES 14.4，比同协议的 OAT-OSN 高 4.9 与 0.7 个百分点（Table 1）。判定：这是「选择性写入 + 终点条件化回溯」最小的可运行样本，代价是提交时刻被动作终点锁死。</p>
+
+<h2 id="stage">2. 事件流水线定位</h2>
+<div class="flowline">
+<span>候选生成</span><span>语义确认</span><span class="on">边界定位</span><span class="part">记忆写入</span><span>检索</span><span>评测</span>
+</div>
+<p>该工作落在<b>边界定位</b>：类别、终点、起点由三组头给出，但终点与起点来自两个解码器、两份不同的可见信息。记忆写入只标为部分命中，因为队列确有写入规则（flag 门控）与淘汰规则（FIFO），却只存片段特征，不做语义抽象、不做合并、没有检索接口，也不允许回改已提交的实例——当缓存看比当记忆系统看更准确。上游假设特征按固定帧率算好、滑窗逐帧移动；下游拿到全局时间坐标下的完整实例，且只在终点可观测后出现。</p>
 <table>
-<tr>
-<th>设置</th>
-<th>数值/结论</th>
-<th>出处</th>
-</tr>
-<tr>
-<td>THUMOS14、MUSES</td>
-<td>对前 On-TAL SOTA 平均 mAP 分别 +4.9pp、+0.7pp</td>
-<td>Table 1</td>
-</tr>
-<tr>
-<td>THUMOS14，去 memory</td>
-<td>46.0 平均 mAP；队列长度 7 最优</td>
-<td>Table 3</td>
-</tr>
-<tr>
-<td>短输入段</td>
-<td>OAT-OSN 从 44.6 降至 25.8；MATR 降幅 9.1pp</td>
-<td>Fig. 4/文中分析</td>
-</tr>
+<tr><th>环节</th><th>内容</th></tr>
+<tr><td>输入</td><td>每 <code>Ls</code> 帧的片段特征块（THUMOS14 为 64 帧，MUSES 为 75 帧），加一个 <code>[FLAG]</code> token</td></tr>
+<tr><td>输出</td><td>每个时间步 <code>N</code> 条 <code>(start, end, class)</code>，NMS 后终点晚于当前时刻的条目被剔除</td></tr>
+<tr><td>交给下游</td><td>已定稿的实例；其起点由当时队列里仍保留的历史片段决定，之后无法修正</td></tr>
 </table>
-<p>实验采用 THUMOS14（20 类）和 MUSES（25 类），前者 segment 长 64，后者 75；报告同时揭示 MUSES 的多镜头动作边界更难。</p>
-<h3>4.1 怎样读这些数字</h3>
-<p>Table 1 的平均 mAP 汇总了 tIoU=0.3–0.7，不应把它等同于某一阈值下的“边界准确率”。MATR 的 +4.9pp 是与同一 THUMOS14 协议下此前在线方法的平均 mAP 差，而不是相对百分比。Table 3 中 w/o mem 的 46.0 到长度 7 的最佳结果，说明队列本身有价值；但队列继续变长不保证单调改善，选择机制和数据集的动作时长共同决定容量收益。</p>
-<h2 id="limits">5. 优势与局限</h2>
-<p>
-<b>优势：</b>把有限历史变成可学习的选择；按可观测性分离起止定位；对 segment 长度较稳健。<br>
-<b>局限：</b>flag 选错就无法找回被丢弃的开始；memory 容量、阈值仍需设定；动作标签/边界定义与机器人关键事件不完全相同。</p>
-<h2 id="takeaway">6. 总结</h2>
-<p>MATR 是 P1 中最直接可借鉴的“历史事件写入”蓝图：只存经过选择的片段，并让当前变化触发对历史的回溯。VLA 可把 end 换成子任务完成/接触变化，把 start 换成关键交互开始。</p>
+
+<h2 id="problem">3. 问题与动机</h2>
+<p>On-TAL 有两条硬约束：只能用当前时刻之前的帧；已输出的实例不得回改。在此之下，窗口大小成为唯一的历史旋钮，而它同时决定算力与可见范围。OAT 的解法是窗口右端钉在当前帧、<code>K</code> 条 anchor 终点相同只有长度不同，起点靠长度回归倒推——起点最远只能推到窗口左界，动作长于窗口时被静默截断。论文用缩短片段把这条失效模式量化：<code>Ls</code> 从 64 降到 8，OAT-OSN 平均 mAP 从 44.6 掉到 25.8，MATR 只掉 9.1 个百分点。</p>
+<p>另一条路线 CAG-QIL 是逐帧 OAD 概率再分组：非动作帧概率偶发高值就切出碎片，动作中段概率下滑就切断实例，同类动作相邻就并成一条。根因一致——分组只有逐帧证据，没有实例级监督，边界是事后拼出来的。</p>
+<p>两条路线的共同问题不是精度而是信息不对称：终点一定落在当前片段内，起点可能早已离开任何固定窗口。MATR 把这条不对称直接写进结构，而不是继续调窗口长度。</p>
+<table>
+<tr><th>维度</th><th>OAT-OSN（滑动窗口 anchor）</th><th>MATR</th></tr>
+<tr><td>历史使用方式</td><td>长 <code>Lq</code> 的连续帧队列全部进 encoder，无选择，移出窗口即丢失</td><td>只保留 <code>[FLAG]=1</code> 的片段特征块，FIFO 淘汰，<code>Lm</code> 为 7（THUMOS14）/ 15（MUSES）</td></tr>
+<tr><td>提交时机</td><td>anchor 终点钉在当前帧，动作未结束即可输出整实例，由 OSN 门控决定何时写入</td><td>终点在当前片段内定位，预测终点晚于当前时刻的实例被剔除，提交发生在动作结束之后</td></tr>
+<tr><td>延迟来源</td><td>窗口累积上下文 + OSN 为等更优候选主动推迟，AEDT 为负（平均提前 1.2 秒量级）</td><td>每步前向开销 + 「必须等到终点可见」的固有延迟；论文未报 AEDT</td></tr>
+</table>
+
+<h2 id="method">4. 方法拆解</h2>
+<img class="figure" src="figures/fig2_architecture.png" alt="MATR 总体结构：帧级特征进入片段编码器，flag token 决定片段特征是否写入 FIFO 记忆队列；终点解码器读取当前片段，起点解码器以终点 embedding 为查询、以记忆队列为键值；三组预测头分别输出终点、起点与类别">
+<p class="caption">Figure 2：记忆队列、flag 更新与 end→start 两级解码的数据流。原图 PDF 见 <code>figures/fig2_architecture.pdf</code>（作者 LaTeX 源码渲染）。</p>
+<h3>4.1 输入与时间表征</h3>
+<p>输入是帧级预训练特征，backbone 全程冻结：THUMOS14 用双流 TSN（RGB+光流），MUSES 用 I3D（仅 RGB）。每 <code>Ls</code> 个连续帧组成一个片段，片段特征 <code>Xt ∈ R^(Ls×D)</code>，<code>D=1024</code>。片段特征与可学习 <code>[FLAG]</code> token 拼接、加正弦位置编码后进 3 层 8 头 encoder。滑窗逐帧移动一格，相邻片段有 <code>Ls-1</code> 帧重叠，这既让记忆里的块高度冗余（读取前做 50% 均匀采样），也让「一段历史」实际以片段为单位而非帧为单位被索引。</p>
+<h3>4.2 关键机制</h3>
+<p><b>队列里存什么。</b>存的是被选中的片段特征块 <code>Ls×D</code>，不是单帧向量，也不是压缩后的语义槽。作者的理由是 TAL 与 OAD 不同：要回归精确时刻，就必须保留帧级时间位置，所以位置信息随特征一起进队列，而不是事后由顺序推断。</p>
+<p><b>写入规则。</b><code>[FLAG]</code> 的标签定义为「该片段与任一动作实例存在重叠帧」，用 BCE 训练 flag head（2 层 FFN）；推理时 <code>sigmoid(ĝ) &gt; 0.5</code> 入队，否则整块丢弃。这个判据只看当前片段是否与动作相关，不看记忆里已有什么，因此写入决策本身没有上下文。</p>
+<p><b>淘汰规则。</b>队列满时丢最旧的一块（FIFO）；每段新视频开始时重置，避免跨视频混队。容量 <code>Lm</code> 取 7（THUMOS14）与 15（MUSES），选择依据是覆盖训练集 99% 的实例时长。</p>
+<p><b>位置编码。</b>起点解码器的 cross-attention 对记忆用二维时序位置编码：相对 segment 位置（该块相对当前片段的位置）与相对 frame 位置（帧在块内的位置）各用 <code>D/2</code> 维正弦编码后拼接。这样做的必要性在于视频时长不可预知、且队列因跳写而不连续，绝对时间戳无法预先归一化。</p>
+<p><b>先终点后起点的解码。</b>每个片段给 <code>N</code> 个实例，用 <code>2N</code> 个 query：<code>N</code> 个 class query 与 <code>N</code> 个 boundary query，成对共享同一位置嵌入。end decoder 以当前片段特征为 key/value，回归终点偏移；start decoder 的 query 直接取 end decoder 的输出 embedding，key/value 换成记忆队列。起点不是自由回归，而是先把时间轴划成 <code>Lm+2</code> 个区做分类、再在选中区内回归偏移。理由是终点只需在片段附近定位，起点却要在记忆覆盖的更大跨度上搜索；用终点条件化起点，等于先用最可靠的证据锁定实例，再拿它去检索历史。消融很直接：单 decoder 同时出起止为 42.7，分离后为 49.5。</p>
+<p><b>训练监督。</b>用 Hungarian 算法匹配，代价为分类概率加 IoU；只监督终点落在 <code>[t-Td+1, t+Ta]</code> 的实例（<code>Td=Ta=16</code>）。总损失五项等权（系数均为 1）：分类 focal、终点 L1、起点「区分类交叉熵 + 区内偏移 L1」、DIoU、flag BCE。DIoU 不可省，去掉后平均 mAP 从 49.5 降到 41.4。</p>
+<h3>4.3 输出与在线边界</h3>
+<p>因果性明确：窗口右端即当前时刻，不使用未来帧，也没有离线后处理。保留的历史是至多 <code>Lm</code> 个 flag 命中块；若这些块连续，THUMOS14 的 7 块约覆盖 70 个特征帧，跳写时实际跨度更长但中间有空洞。推理时每步对 <code>N</code> 条实例做阈值 0.3 的 NMS，并把预测终点晚于当前时刻的条目删掉——后者说明训练时允许的 <code>+Ta</code> 前瞻在推理阶段被主动禁用。</p>
+<p>延迟有两个来源：单步前向，以及结构性等待。THUMOS14 上 <code>Ls=64</code> 为 167.1 ms / 6.0 fps，参数量 192.8M；<code>Ls=16</code> 时降到 53.8 ms / 18.6 fps、mAP 46.3。即便算力足够，实例也要等终点进入片段才可能被提交，因此单条实例的延迟下限约等于它的时长；这不是实现问题，是「先终点」的定义决定的。收益在另一头：历史长度不再绑住输入长度，片段可缩到 16 帧仍有 46.3 mAP、单步 53.8 ms，而 OAT 把片段缩到 8 帧就掉到 25.8。</p>
+
+<h2 id="evidence">5. 证据与实验</h2>
+<p>评测集只有 THUMOS14 与 MUSES，指标为 tIoU 0.3–0.7 的 mAP（Table 1，%）：</p>
+<table>
+<tr><th>方法</th><th>数据集</th><th>0.3</th><th>0.4</th><th>0.5</th><th>0.6</th><th>0.7</th><th>平均</th></tr>
+<tr><td>OAT-OSN</td><td>THUMOS14</td><td>63.0</td><td>56.7</td><td>47.1</td><td>36.3</td><td>20.0</td><td>44.6</td></tr>
+<tr><td>MATR</td><td>THUMOS14</td><td>70.3</td><td>62.7</td><td>52.1</td><td>38.6</td><td>23.7</td><td>49.5</td></tr>
+<tr><td>OAT-OSN</td><td>MUSES</td><td>22.1</td><td>18.5</td><td>14.2</td><td>8.9</td><td>4.7</td><td>13.7</td></tr>
+<tr><td>MATR</td><td>MUSES</td><td>23.5</td><td>19.3</td><td>14.3</td><td>9.4</td><td>5.7</td><td>14.4</td></tr>
+</table>
+<p>相对 OAT-OSN 的增益在 THUMOS14 上集中于低阈值（0.3 处 +7.3），高阈值只 +3.7，说明记忆主要补回了「整条实例被窗口截断」这类错误，而非把边界磨得更细。论文声称超过部分离线方法：THUMOS14 上确实高于 G-TAD 的 39.9，但低于 ContextLoc 的 50.9；MUSES 上 14.4 仍低于离线 MUSES 的 18.6。</p>
+<p>记忆本身的价值见 Table 3(a)：去掉记忆为 46.0，容量 1/3/7/11/15/19 分别为 47.7/48.3/49.5/47.9/48.0/49.1，非单调；MUSES 上则由 13.3 升到 15 块时的 14.4。Table 4 显示这套记忆只增加 24.0M 参数（MAT 为 40.1M），推理反而更快。</p>
+<p>论文只报 THUMOS14 与 MUSES，<b>ActivityNet 与 FineAction 上的 mAP 未在已核验的公开材料中确认</b>。mAP 本身是处理完全部帧后汇总计算的，无法区分「及时提交」与「迟到提交」，而本文没有 AEDT 一类指标，因此在线时效只能从结构与 fps 推断，不能从精度表读出。</p>
+
+<h2 id="fit">6. 优点、局限与 VLA 适配</h2>
+<div class="duo">
+<div><h4>可迁移</h4><p>flag 门控写入 + FIFO 淘汰这套「按需存、定长存」的预算控制；两级相对位置编码，让不连续历史仍可被索引；以及把宽范围起点回归换成「区域分类 + 区内偏移」，这是降低长历史检索难度的通用手法。</p></div>
+<div><h4>不成立的前提</h4><p>On-TAL 提交的是已经结束的片段，VLA 要界定的是正在执行、尚未结束的技能，时间方向相反；flag 只看当前片段是否与实例重叠，不看任务语义，机器人上「与任务相关」不等于「与动作区间重叠」；mAP 与 fps 也都不是控制回路真正关心的量。</p></div>
+</div>
+<p>在 VLA 里，「先终点后起点」等价于<b>先确认状态转移已完成，再回溯起始观测</b>：把夹爪闭合、接触中断、物体离桌这类可观测事件当作终点证据，再用终点 embedding 去记忆里检索该段技能的初始观测，回答「这段技能从哪一帧开始、初始状态是什么」。这个顺序还有一个副产品——起止配对给出技能时长，异常短或异常长的实例可以直接判为误检，不必另训一个判别器。代价同样明确：技能结束前无法提交，做不了提前规划；若要前瞻，只能把终点头改成「预测终点 + 剩余时长」，而那时记忆里还没有终点之后的证据，误差会沿起点回溯继续放大。</p>
+<p>容量选择不能照抄 7 或 15。论文的原则是覆盖 99% 实例时长，但消融显示容量并非越大越好：THUMOS14 上 11/15/19 都没超过 7，作者归因于记忆里出现多个外观相似的起点后，实例被匹配到错误起点；MUSES 则要 15 才最优。工程上应按「最长需要回溯的技能时长 ÷ flag 命中率」估初值，再在自有数据上扫一遍；控制频率越高，同一时长需要更多块，容量与帧率耦合，换平台必须重标。</p>
+
+<h2 id="repro">7. 落地清单</h2>
+<ul class="checklist">
+<li>复刻 flag 门控写入：以「片段与任务区间有帧重叠」为标签训练 <code>[FLAG]</code>，阈值 0.5 入队，超长 FIFO 淘汰，换视频重置队列。</li>
+<li>用 <code>Ls=64</code>、<code>Lm=7</code>、<code>N=10</code> 在 THUMOS14 上跑通，再按自有数据的最长技能把 <code>Lm</code> 扫一遍（1/3/7/11/15），同时记录 mAP 与起点误差。</li>
+<li>把起点回归改为「<code>Lm+2</code> 区域分类 + 区内偏移」，与直接回归对比高 tIoU 下的边界误差。</li>
+<li>分开 end / start 两个 decoder，先验证单 decoder 的退化幅度（论文为 42.7 对 49.5），再决定是否值得两份参数。</li>
+<li>在机器人日志上把终点换成可观测的终止事件（接触中断、夹爪闭合），测量从事件发生到实例提交的端到端延迟。</li>
+</ul>
+<div class="srcbox">
+<p><b>来源：</b>Youngkil Song, Dongkeun Kim, Minsu Cho, Suha Kwak, "Online Temporal Action Localization with Memory-Augmented Transformer", ECCV 2024；arXiv:2408.02957v1（2024-08-06 提交）https://arxiv.org/abs/2408.02957；官方项目页 https://cvlab.postech.ac.kr/research/MATR/；代码 https://github.com/SKH-CJH/MATR。结构参数取自第 3 节与 4.3 节，数字取自 Table 1、Table 3、Table 4、Table 7，位置编码细节见附录 A。</p>
+<p><b>图像说明：</b>Figure 2 由作者 LaTeX 源码中的 <code>fig2_architecture.pdf</code> 渲染为同名 PNG，原图 PDF 保留在 <code>figures/fig2_architecture.pdf</code>。</p>
+</div>
+<p class="pagefoot">相关页面：<a href="../oat/index.html">OAT · 滑动窗口 anchor 与提交门控</a> · <a href="../oadtr/index.html">OadTR · 流式 transformer 编码</a> · <a href="../cag-qil/index.html">CAG-QIL · 逐帧分组的模仿学习路线</a> · <a href="../../index.html">返回总站</a></p>
 </article>
+</div>
 </main>
 </body>
 </html>

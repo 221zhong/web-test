@@ -3,86 +3,179 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>FlowGEBD：What’s in the Flow?｜论文精读</title>
+<title>FlowGEBD：无训练的光流候选生成｜专题一 · 历史关键事件检测</title>
 <link rel="stylesheet" href="../../style.css">
 </head>
 <body>
 <header>
 <div class="wrap">
-<div class="eyebrow">VLA Historical Key Event Detection · Paper Deep Read</div>
-<h1>FlowGEBD：What’s in the Flow?</h1>
-<p>Gothe et al. · WACV 2024｜<a href="https://arxiv.org/abs/2404.18935">arXiv</a> · <a href="https://openaccess.thecvf.com/content/WACV2024/papers/Gothe_Whats_in_the_Flow_Exploiting_Temporal_Motion_Cues_for_Unsupervised_WACV_2024_paper.pdf">CVF 论文</a>
+<div class="crumb"><a href="../../index.html">VLA 历史记忆</a> / <a href="../index.html">专题一 · 历史关键事件检测</a> / P0-2</div>
+<div class="eyebrow">Paper Deep Read · 低成本候选生成</div>
+<h1>FlowGEBD：What's in the Flow? Exploiting Temporal Motion Cues for Unsupervised Generic Event Boundary Detection</h1>
+<p>Gothe et al. · WACV 2024｜
+<a href="https://arxiv.org/abs/2404.18935">arXiv</a> · <a href="https://openaccess.thecvf.com/content/WACV2024/papers/Gothe_Whats_in_the_Flow_Exploiting_Temporal_Motion_Cues_for_Unsupervised_WACV_2024_paper.pdf">论文页</a>
 </p>
-<nav>
-<a href="../../index.html">← 返回论文导航</a>
-</nav>
 </div>
 </header>
 <main>
-<article>
-<span class="tag">P0-2 · 低成本候选生成</span>
-<h2>论文信息</h2>
-<table>
-<tr>
-<th>作者</th>
-<td>Sourabh Vasant Gothe、Vibhav Agarwal、Sourav Ghosh、Jayesh Rajkumar Vachhani、Pranay Kashyap、Barath Raj Kandur Raja</td>
-</tr>
-<tr>
-<th>机构</th>
-<td>Samsung R&D Institute Bangalore</td>
-</tr>
-<tr>
-<th>发表</th>
-<td>WACV 2024</td>
-</tr>
-<tr>
-<th>定位</th>
-<td>面向 VLA 历史关键事件检测的 P0 参考工作</td>
-</tr>
-</table>
-<nav class="toc">
-<a href="#summary">摘要</a>
-<a href="#motivation">动机</a>
-<a href="#method">方法</a>
-<a href="#exp">实验</a>
-<a href="#limits">局限</a>
-<a href="#end">总结</a>
+<div class="doc-layout">
+<aside class="doc-side">
+<nav class="sidenav">
+<h4>本页目录</h4>
+<a href="#summary">1 核心摘要</a>
+<a href="#stage">2 事件流水线定位</a>
+<a href="#problem">3 问题与动机</a>
+<a href="#method">4 方法拆解</a>
+<a href="#evidence">5 证据与实验</a>
+<a href="#fit">6 优点、局限与 VLA 适配</a>
+<a href="#repro">7 落地清单</a>
+<div class="side-extra">候选生成环节唯一「零参数、零训练」的 P0 参考，可作召回下限基线</div>
 </nav>
-<p>
-<b>一句话：</b>FlowGEBD 探索一个轻量的 GEBD 路径：不训练神经网络，仅依赖运动线索寻找边界。它组合像素追踪与 flow normalization 两个非参数算法，并在末端进行时间 refinement；论文报告 Kinetics-GEBD 上 F1@0.05 为 0.713，TAPOS 平均 F1 为 0.623。</p>
+</aside>
+<article>
+<div class="verdict">
+<div class="vt">决策卡</div>
+<p>用两条光流启发式规则代替神经网络做候选生成：单帧 6.5 ms、不需要任何标注，但只输出「可能变了」的时刻，且完整管线必须看到整段视频。</p>
+<dl>
+<dt>最小可复用件</dt><dd>patch 内「非零位移像素存活比例」低于 0.4 即记候选、并从当前帧重采样基准点的计数规则</dd>
+<dt>主要风险</dt><dd>相机与机械臂自运动主导光流，任务相关运动被背景流淹没，候选退化为自运动事件</dd>
+<dt>复现门槛</dt><dd>无标注、无训练；只需稀疏与稠密光流，CPU 可跑，三个阈值</dd>
+</dl>
+</div>
+
 <h2 id="summary">1. 核心摘要</h2>
-<p>FlowGEBD 探索一个轻量的 GEBD 路径：不训练神经网络，仅依赖运动线索寻找边界。它组合像素追踪与 flow normalization 两个非参数算法，并在末端进行时间 refinement；论文报告 Kinetics-GEBD 上 F1@0.05 为 0.713，TAPOS 平均 F1 为 0.623。</p>
-<h2 id="motivation">2. 研究动机</h2>
-<p>大多数边界检测依赖大量标注、光流预计算或复杂网络。作者把问题收敛为“运动连续性何时被破坏”，希望得到可解释、低计算、无训练的因果候选器。它并不声称 motion 足以恢复全部语义。</p>
-<h2 id="method">3. 方法论</h2>
-<img class="figure" src="figures/flowchart.png" alt="FlowGEBD：What’s in the Flow? 原论文方法图">
-<p class="caption">原论文流程图（arXiv LaTeX 源码 <code>images/flowgebd_flowchart__1_.png</code>）。两条支路是 Pixel Tracking 与 Flow Normalization，末端为 temporal refinement。</p>
-<h3>整体架构与执行流程</h3>
-<p>Pixel Tracking 从基准帧采样像素并随时间追踪；可持续追踪点相对基准点显著减少时，形成边界证据。Flow Normalization 从归一化运动场提供第二条证据。二者在帧或 patch 级产生分数，temporal refinement 将峰值变为时间戳集合。任意时刻仅依赖当前与过去帧，满足 causal。</p>
-<h3>3.2 Pixel Tracking：检测可追踪性下降</h3>
-<p>该分支从基准帧选取像素，并沿着 optical flow 在后续帧追踪。当大量点无法再与基准建立稳定对应时，系统提高边界证据。它关注的是轨迹连续性是否断裂，而不是单帧速度是否很大；遮挡、视角切换或动作相位转折都可能体现在这类下降中。</p>
-<h3>3.3 Flow Normalization：比较运动场结构</h3>
-<p>第二支路对运动场做归一化，以减轻单纯速度幅值的影响，重点比较方向和空间组织。由此，持续但快速的动作不应仅因幅值大而反复触发；当归一化后的场结构显著改变时，才形成另一条边界证据。两支路在错误模式上互补，末端 temporal refinement 将连续分数转换为时间戳。</p>
-<h3>3.4 因果候选器的正确位置</h3>
-<p>论文将计算定义为 causal：时刻 <code>t</code> 仅依赖当前和过去帧。工程上仍要将“因果”与“零延迟”区分开，局部峰通常需要一个短确认窗口。接入机器人时还应抵消相机/机械臂共同运动，并在夹爪与目标物局部取点；否则背景光流会淹没任务相关变化。</p>
-<h2 id="exp">4. 实验与结果</h2>
-<p>论文将其与无监督方法比较，并报告 Kinetics-GEBD 的 F1@0.05 为 0.713；TAPOS 验证集平均 F1 为 0.623。该结果仅支持 motion-only 对通用边界的有效性，不能推出抓取成功或放置完成可由运动单独判定。</p>
-<h2 id="limits">5. 优势与局限</h2>
+<p>GEBD 要求把长视频切成与类别无关的事件段，判断依据是人类会自然感到的「主体、动作、镜头、环境、交互对象」变化。已有方法几乎都是神经模型，需要大量标注、算力与存储。这篇论文换了一个问法：不用参数化模型，只靠光流能不能达到无监督方法的水平？作者给出两条非参数规则——Pixel Tracking（PT，稀疏流跟踪像素存活率）与 Flow Normalization（FN，稠密流归一化后取峰）——再取并集并做时间 refinement。Kinetics-GEBD 验证集上 F1@0.05 为 0.713，比无监督基线 PA 高 31.7 个百分点，也超过监督基线 PC 的 0.625；TAPOS 验证集平均 F1 为 0.623。判定：它适合做 VLA 流水线最前端的召回层，把昂贵模型限制在少量候选上；不能承担语义确认，因为方法本身不含任何语义，作者也明确承认这一点。</p>
+
+<h2 id="stage">2. 事件流水线定位</h2>
+<div class="flowline">
+<span class="on">候选生成</span><span>语义确认</span><span>边界定位</span><span>记忆写入</span><span>检索</span><span>评测</span>
+</div>
+<p>它只回答「哪里可能发生了事件」，不回答「发生了什么」。对上游的假设是视频已按固定帧率采样、且能接受光流的逐帧开销；对下游的假设是候选会被语义模型或机器人状态复核，因此可以容忍较高的假阳性。</p>
 <table>
 <tr>
-<th>优势</th>
-<th>局限 / 迁移注意点</th>
+<th>环节</th>
+<th>内容</th>
 </tr>
 <tr>
-<td>非参数、可解释、因果，适合作为流式系统的前级过滤器。</td>
-<td>相机抖动、遮挡、空中复位或快速但无语义的运动均会造成假阳性。</td>
+<td>输入</td>
+<td>4 FPS、160×160 的 RGB 序列；PT 只用亮度通道，FN 用相邻帧稠密流</td>
+</tr>
+<tr>
+<td>输出</td>
+<td>去重后的边界时间戳集合，按相对距离阈值评测</td>
+</tr>
+<tr>
+<td>交给下游</td>
+<td>带时间戳的候选窗口，供语义确认决定是否写入记忆</td>
 </tr>
 </table>
-<h2 id="end">6. 总结</h2>
-<p>它把候选生成与语义确认解耦：前者可极轻，昂贵 VLM 只在峰值候选后调用。机器人版本宜围绕任务对象和夹爪采点，并增加状态确认。</p>
-<h2>图像与来源说明</h2>
-<p>本页仅保留原论文的动机/方法图，实验结论以文字呈现。图像优先来自作者公开 LaTeX 源码；页面内图片为原图的网页展示转换，原始 PDF/PNG 文件也保存在本页 <code>figures/</code> 目录。</p>
+
+<h2 id="problem">3. 问题与动机</h2>
+<p>前人的失效模式很具体。按 HSV 像素差检测镜头切换的工具（PySceneDetect）在 Kinetics-GEBD 上 F1@0.05 只有 0.275，因为绝大多数边界是动作或主体变化，画面并不切镜头。PA 依赖在训练集上学到的可预测性分数，属于参数化方法，F1@0.05 为 0.396。CoSeg 用 ResNet-18 特征做重建，UBoCo 用对比学习，两者内存开销都大；论文指出这类以 ResNet-50 为骨干的方法在 160×160 上每帧至少 46.4 ms（GPU），端侧不可行。监督方法逐帧二分类，对连续帧重复提特征，冗余明显。</p>
+<p>作者据此把边界重新定义为「运动连续性被破坏」，并接受一个前提：真正的事件变化会在光流统计上留下不连续。该前提只在主体在动、相机基本静止、纹理足够时成立，第 6 节说明它在机器人场景中如何破裂。</p>
+
+<h2 id="method">4. 方法拆解</h2>
+<img class="figure" src="figures/flowchart.png" alt="FlowGEBD 方法流程图：输入视频分入 Pixel Tracking 与 Flow Normalization 两条支路，各自支持 framewise 与 patchwise 模式，候选时刻取并集后经 Temporal Refinement 输出边界">
+<p class="caption">作者论文流程图（本页 <code>figures/flowchart.png</code>，取自作者公开 LaTeX 源码）。两路候选在 ⊕ 处取并集，再统一做时间 refinement；右侧是 patch 网格示意。</p>
+<h3>4.1 输入与时间表征</h3>
+<p>预处理统一为 4 FPS、160×160，这个选择直接决定后面所有阈值的物理含义：一帧等于 0.25 s。空间上把画面切成 <code>n_w=n_h=5</code> 的 base patch，再在相邻四个 base patch 的质心处补一层 centroidal patch，共 <code>25+16=41</code> 个，用于捕捉跨越网格交界的事件。每个 patch 独立跑完整条序列，最后把 41 路预测取并集——这是典型的「多假设并联、靠并集保召回」结构，代价是假阳性随 patch 数线性增长，必须依赖 refinement 去重。</p>
+<h3>4.2 关键机制</h3>
+<p><b>PT：检测参照系失效，而不是速度大小。</b>在 patch 内用均匀随机采样或 Shi-Tomasi 角点得到基准点集 <code>P_base</code>，逐帧用迭代 Lucas-Kanade 算稀疏流，只保留位移非零的点构成 <code>P_i</code>：</p>
+<p><code>|P_i| / |P_base| &lt; θ1 = 0.4 → 记 i 为候选，并从帧 i 重采样 P_base</code></p>
+<p>含义是超过 60% 的基准点跟丢了。持续但缓慢的运动仍能被跟踪，不会触发；遮挡、镜头切换、主体替换会让计数骤降。命中后重采样是关键设计：否则一次失败会让后续所有帧都处于低存活状态，产生连片假边界。</p>
+<p><b>FN：把绝对位移换成占比。</b>每个 patch 用 Farnebäck 稠密流，取 patch 内最大位移作为 PatchFlow，沿时间累积成序列 <code>Φ</code>，再做整段 L2 归一化 <code>Φ̂_i = Φ_i / ||Φ||₂</code>，超过 <code>θ2 = 0.25</code> 记为候选。归一化的必要性在于可移植性：不同视频、不同 patch 的绝对像素位移能差一个数量级以上，固定像素阈值无法跨片复用；除以整段范数后，阈值变成「该帧占整段运动的比例」，才具有跨域可比性。代价同样来自这个分母——它需要完整序列，因此 FN 天然非因果。</p>
+<p><b>refinement：把多 patch 的重复命中折叠成一个时刻。</b>候选排序后按 <code>θ3 = 0.5</code>（即两帧）聚类，每簇输出中位数，密集簇（多个 patch 同时报同一事件）与孤立边界都被规约为一个代表点。用中位数而非均值，是为了不被簇边缘的离群候选拉偏。</p>
+<h3>4.3 输出与在线边界</h3>
+<p>因果性必须分开说，这是最容易写错的地方。<b>PT 是因果的</b>：时刻 <code>t</code> 只用 <code>t-1→t</code> 的流，检测延迟一帧，即 250 ms。<b>FN 与 refinement 不是因果的</b>：L2 分母需要整段 <code>Φ</code>，聚类需要看到候选前后 <code>θ3</code> 邻域；Ensemble 先取并集再统一 refinement，因此整条管线是离线批处理，而非流式。论文把双向处理列为未来工作，说明作者清楚 PT 只向前看；但整段归一化与全局聚类仍让合并后的管线无法直接在线运行。</p>
+<p>要在 VLA 中在线使用，得改两处：用滑动窗口范数或运行统计替代整段 L2，阈值语义随之变为「窗口内占比」；把向后聚类换成「候选后固定确认窗」。后者会把 0.5 s 直接变成不可压缩的固定延迟，必须计入控制预算。单帧成本方面，论文报告 PT 2.26 ms、FN 6.42 ms、并集 6.5 ms（Galaxy S21 Ultra，12 GB RAM，CPU 段），实现复杂度主要落在光流本身，与 <code>wh</code> 和序列长度成正比。</p>
+
+<h2 id="evidence">5. 证据与实验</h2>
+<p>数据为 Kinetics-GEBD（54,691 条 10 s 视频，验证集约 18,000 条）与 TAPOS（1,790 个验证实例，21 类动作按子动作切分）。指标为相对距离 0.05 到 0.5 的 F1，主报 F1@0.05。全部实验在 patchwise 模式、<code>n_w=n_h=5, θ1=0.4, θ2=0.25, θ3=0.5</code> 下完成（论文第 4.2 节）。</p>
+<table>
+<tr>
+<th>方法</th>
+<th>类型</th>
+<th>Kinetics F1@0.05</th>
+<th>Kinetics Avg</th>
+<th>TAPOS Avg</th>
+</tr>
+<tr>
+<td>PA</td>
+<td>无监督（神经）</td>
+<td>0.396</td>
+<td>0.527</td>
+<td>0.543</td>
+</tr>
+<tr>
+<td>UBoCo-Res50</td>
+<td>无监督（神经）</td>
+<td>0.703</td>
+<td>0.866</td>
+<td>未在已核验的公开材料中确认</td>
+</tr>
+<tr>
+<td>PC</td>
+<td>监督</td>
+<td>0.625</td>
+<td>0.817</td>
+<td>0.643</td>
+</tr>
+<tr>
+<td>DDM-Net</td>
+<td>监督</td>
+<td>0.764</td>
+<td>0.873</td>
+<td>0.728</td>
+</tr>
+<tr>
+<td>FlowGEBD（PT）</td>
+<td>非参数</td>
+<td>0.702</td>
+<td>0.841</td>
+<td>0.619</td>
+</tr>
+<tr>
+<td>FlowGEBD（FN）</td>
+<td>非参数</td>
+<td>0.691</td>
+<td>0.861</td>
+<td>0.618</td>
+</tr>
+<tr>
+<td>FlowGEBD（并集）</td>
+<td>非参数</td>
+<td>0.713</td>
+<td>0.845</td>
+<td>0.623</td>
+</tr>
+</table>
+<p>数据出自论文 Table 1 与 Table 2。读这张表要注意三点。其一，优势集中在严格容差：容差放宽到 0.5 时并集为 0.869，仍低于 DDM-Net 的 0.902，说明它擅长「大致对准」，不擅长精确定位，这符合候选生成而非边界定位的定位。其二，并集的 F1@0.05 高于两路单独结果（0.713 对 0.702 / 0.691），但平均 F1 低于 FN 的 0.861，说明两路互补主要发生在严格容差附近。其三，TAPOS 仅 1,790 个实例且由子动作切分定义边界，结论支撑弱于 Kinetics。</p>
+<p>消融（Table 3、Table 4）显示：framewise 换成 patchwise 把 PT 从 0.492 / 0.533 提到 0.659 / 0.678，加入 centroidal patch 后到 0.702；<code>n_w=n_h</code> 取 3、4、5 时并集为 0.709、0.710、0.713，更小的 patch 会引入噪声边界，作者取 5。阈值敏感性扫描了 <code>θ1, θ2 ∈ [0.1, 0.9]</code>、<code>θ3 ∈ {0.5, …, 3.0}</code> 的 9×9×6 组组合，并集 F1@0.05 的标准差在 Kinetics 上为 0.0006，TAPOS 上为 0.01。这个稳健性结论只对「并集 + refinement」成立，单路 FN 的标准差为 0.02，对阈值更敏感。</p>
+
+<h2 id="fit">6. 优点、局限与 VLA 适配</h2>
+<div class="duo">
+<div><h4>可迁移</h4><p>把边界定义为「参照系失效」而非速度峰值，这个判据对光照与外观变化不敏感；阈值全部用相对量（像素存活比例、运动占比），换分辨率不必重调；41 路 patch 并联加中位数去重，天然给出冗余候选，适合作为前端召回层；整个方法没有可训练参数，换域不需要重训，只需重设帧率与网格。</p></div>
+<div><h4>不成立的前提</h4><p>光流可信、主体在动、相机基本静止。机器人上三条都不稳：腕部相机随手臂运动，背景流恒定且幅度大；夹爪与目标经常占满视野；低纹理桌面让角点采不到、稠密流的平滑先验把细节抹掉。</p></div>
+</div>
+<p>失效条件有四类，各自对应可预测的假阳性。<b>低纹理与反光</b>：金属、白墙、透明容器让 <code>P_base</code> 过少，比例阈值统计不稳，同时 Farnebäck 的平滑先验把位移抹平，导致漏检。<b>快速相机运动</b>：位移超出 Lucas-Kanade 金字塔的搜索范围，整帧基准点同时跟丢，产生一次假边界，随后重采样又让后续帧的参照基线漂移。<b>遮挡</b>：目标被机械臂挡住时存活比例骤降，与真实事件在信号上不可区分，假阳性会集中在抓取与放置瞬间。<b>自运动占满视野</b>：patch 内几乎全是手臂，流场由关节轨迹决定，候选与任务事件解耦。另外 4 FPS 意味着短于 250 ms 的接触、滑脱会被直接跳过。</p>
+<p>用 robot state 或本体感知替代光流的可行性要分开评估。PT 的「跟踪失效」在状态空间里没有对应物——状态不会跟丢——只能换成一步预测残差的突增，例如 <code>||q_t - f(q_{t-1})||</code>；这对关节换向、夹爪开合、力矩突变敏感，对物体被移动完全不敏感。FN 的归一化流量可以换成末端速度或关节速度的窗口归一化峰值，但机械臂常以匀速走完轨迹，匀速段占满分母，真正的接触突变反而被压低；更麻烦的是抓取成功与抓取失败在 state 上可能同样平滑，缺少物体侧信息。工程上还有两个硬约束：state 常在 100–1000 Hz，与 4 FPS 不同步，需先降采样对齐；腕部相机自运动与本体运动强耦合，不做标定就无法分离。结论是不要把整条管线换成 state，更稳的组合是「PT 留在像素域并做自运动补偿，state 只作二次确认」。</p>
+<p>延迟上，6.5 ms/帧的算力成本不是瓶颈，真正的瓶颈是 refinement 的 0.5 s 确认窗。若沿用论文的聚类半径，候选到写入之间至少有 0.5 s 不可压缩延迟；对 10–20 Hz 的控制回路，这足以让「抓取完成」晚于实际接触。最小改造是把聚类换成两帧一致的因果规则，牺牲少量重复抑制换取确定性延迟。</p>
+
+<h2 id="repro">7. 落地清单</h2>
+<ul class="checklist">
+<li>复现 PT 单路：4 FPS、160×160、<code>n_w=n_h=5</code>、<code>θ1=0.4</code>，先把它当作候选召回率的下限基线，再决定是否需要 FN。</li>
+<li>在机器人 episode 上先做相机运动补偿（背景单应或固定第三方视角），再计算 patch 流，否则测到的只是机械臂轨迹。</li>
+<li>把 FN 的整段 L2 归一化改为 8 s 滑动窗口，记录窗口长度对 <code>θ2</code> 语义、候选数量与延迟的影响。</li>
+<li>用「候选后 0.5 s 确认窗」替换离线聚类，并把该窗口显式计入控制延迟预算再做对比实验。</li>
+<li>并联一路本体感知突变检测（关节速度或末端位姿残差），仅在两路同时触发时把候选送入语义确认。</li>
+</ul>
+<div class="srcbox">
+<p><b>来源：</b>arXiv abs <a href="https://arxiv.org/abs/2404.18935">2404.18935</a>（v1，2024-02-15）；WACV 2024 论文，CVF Open Access 版第 6941–6948 页；补充材料见 CVF supplemental。方法细节取自第 3 节与 Algorithm 1–3，数值取自 Table 1–5 与第 4.4 节。</p>
+<p><b>图像说明：</b>本页图为作者 LaTeX 源码中的流程图，展示 PT / FN 两条支路、framewise 与 patchwise 两种模式、并集与 Temporal Refinement；未做重绘。</p>
+</div>
+<p class="pagefoot">相关页面：<a href="../ddm-net/index.html">DDM-Net（P0-1 语义边界确认）</a> · <a href="../motion-aware-ssl/index.html">Motion-Aware Self-Supervision（P1 运动表征）</a> · <a href="../../index.html">返回总站</a></p>
 </article>
+</div>
 </main>
 </body>
 </html>

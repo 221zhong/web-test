@@ -3,86 +3,106 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>DDM-Net：Progressive Attention on Multi-Level Dense Difference Maps｜论文精读</title>
+<title>DDM-Net：Progressive Attention on Multi-Level Dense Difference Maps｜专题一 · 历史关键事件检测</title>
 <link rel="stylesheet" href="../../style.css">
 </head>
 <body>
 <header>
 <div class="wrap">
-<div class="eyebrow">VLA Historical Key Event Detection · Paper Deep Read</div>
+<div class="crumb"><a href="../../index.html">VLA 历史记忆</a> / <a href="../index.html">专题一 · 历史关键事件检测</a> / P0-1</div>
+<div class="eyebrow">Paper Deep Read · 语义边界确认</div>
 <h1>DDM-Net：Progressive Attention on Multi-Level Dense Difference Maps</h1>
-<p>Tang et al. · CVPR 2022｜<a href="https://arxiv.org/abs/2112.04771">arXiv</a> · <a href="https://openaccess.thecvf.com/content/CVPR2022/papers/Tang_Progressive_Attention_on_Multi-Level_Dense_Difference_Maps_for_Generic_Event_CVPR_2022_paper.pdf">CVF 论文</a> · <a href="https://github.com/MCG-NJU/DDM">代码</a>
+<p>Jiaqi Tang, Zhaoyang Liu, Chen Qian, Wayne Wu, Limin Wang · 南京大学 / SenseTime · CVPR 2022｜
+<a href="https://arxiv.org/abs/2112.04771">arXiv</a> · <a href="https://openaccess.thecvf.com/content/CVPR2022/papers/Tang_Progressive_Attention_on_Multi-Level_Dense_Difference_Maps_for_Generic_Event_CVPR_2022_paper.pdf">论文页</a> · <a href="https://github.com/MCG-NJU/DDM">代码</a>
 </p>
-<nav>
-<a href="../../index.html">← 返回论文导航</a>
-</nav>
 </div>
 </header>
 <main>
-<article>
-<span class="tag">P0-1 · 语义边界确认</span>
-<h2>论文信息</h2>
-<table>
-<tr>
-<th>作者</th>
-<td>Jiaqi Tang、Zhaoyang Liu、Chen Qian、Wayne Wu、Limin Wang</td>
-</tr>
-<tr>
-<th>机构</th>
-<td>南京大学 State Key Laboratory for Novel Software Technology；SenseTime Research</td>
-</tr>
-<tr>
-<th>发表</th>
-<td>CVPR 2022</td>
-</tr>
-<tr>
-<th>定位</th>
-<td>面向 VLA 历史关键事件检测的 P0 参考工作</td>
-</tr>
-</table>
-<nav class="toc">
-<a href="#summary">摘要</a>
-<a href="#motivation">动机</a>
-<a href="#method">方法</a>
-<a href="#exp">实验</a>
-<a href="#limits">局限</a>
-<a href="#end">总结</a>
+<div class="doc-layout">
+<aside class="doc-side">
+<nav class="sidenav">
+<h4>本页目录</h4>
+<a href="#summary">1 核心摘要</a>
+<a href="#stage">2 事件流水线定位</a>
+<a href="#problem">3 问题与动机</a>
+<a href="#method">4 方法拆解</a>
+<a href="#evidence">5 证据与实验</a>
+<a href="#fit">6 优点、局限与 VLA 适配</a>
+<a href="#repro">7 落地清单</a>
+<div class="side-extra">语义确认环节的 P0 参考：把“哪里有变化”与“变化是否算事件”拆成两级证据。</div>
 </nav>
-<p>
-<b>一句话：</b>DDM-Net 面向 Generic Event Boundary Detection（GEBD）：不预设动作类别，只判断人类会自然感到“事件切换”的时刻。它以多层视觉特征差替代单一光流，并以 progressive attention 在 RGB appearance 与差分表示之间分两阶段融合。Kinetics-GEBD 验证集上，F1@0.05 为 0.764，PC 为 0.625。</p>
+</aside>
+<article>
+<div class="verdict">
+<div class="vt">决策卡</div>
+<p>可直接借用它的两阶段证据核验结构与后处理规则，用于判断某个视觉变化是否值得写入历史；代价是原设定需要未来约 1 秒的帧，改成因果版本后每个边界都要晚一个窗口才能确认。</p>
+<dl>
+<dt>最小可复用件</dt><dd>Map-Squeezed + intra-modal + cross-modal 的“先各自聚合、再互证”模块，以及“阈值 0.5 + ±5 帧局部极大值”的后处理。</dd>
+<dt>主要风险</dt><dd>中心窗口带来的非因果性：非因果时精度高，因果化后会引入一个窗口的确认延迟，且延迟随采样跨度线性增长。</dd>
+<dt>复现门槛</dt><dd>Kinetics-GEBD 级别数据与 ResNet-50 单卡即可训练；无需额外标注，但需要视频级逐帧边界标签与较长的离线推理预算。</dd>
+</dl>
+</div>
+
 <h2 id="summary">1. 核心摘要</h2>
-<p>DDM-Net 面向 Generic Event Boundary Detection（GEBD）：不预设动作类别，只判断人类会自然感到“事件切换”的时刻。它以多层视觉特征差替代单一光流，并以 progressive attention 在 RGB appearance 与差分表示之间分两阶段融合。Kinetics-GEBD 验证集上，F1@0.05 为 0.764，PC 为 0.625。</p>
-<h2 id="motivation">2. 研究动机</h2>
-<p>稀疏光流容易把连续移动误判为边界，也会漏掉外观、对象关系或语义状态的变化。直接拼接 RGB 和 motion 又会将噪声混在一起。作者的观察是：变化证据必须有多层语义，且 motion 是否构成边界需要 appearance 的共同确认。</p>
-<h2 id="method">3. 方法论</h2>
-<img class="figure" src="figures/overview.png" alt="DDM-Net：Progressive Attention on Multi-Level Dense Difference Maps 原论文方法图">
-<p class="caption">原论文 overview（LaTeX 源码 <code>overview.pdf</code> 渲染）；展示 Feature Bank、Dense Difference Maps 与 Progressive Attention 的整体数据流。</p>
-<h3>整体架构与执行流程</h3>
-<p>输入是候选帧附近的短片段。骨干网络在不同空间/时间层级形成 Feature Bank；DDM 计算时空特征间的稠密差异，得到多层 motion representation。随后先做 intra-modal attention，使 RGB 与 DDM 分别选择有效时刻；再做 cross-modal attention，让两路证据相互核验，最后融合 logits 得到边界概率。DDM 可写成特征差异 <code>D(i,j)=||f_i-f_j||₂</code>：它提供变化证据，并不直接等于边界判定。</p>
-<h3>3.2 Feature Bank 与 Dense Difference Maps</h3>
-<p>Feature Bank 不只保留最后一层 feature，而是同时利用不同空间/时间层级。这样，短暂的接触、局部对象位移可在细粒度层出现，姿态和关系的更缓慢切换可在更大感受野中被比较。对于两个时间位置的特征 <code>fᵢ</code>、<code>fⱼ</code>，DDM 的基本证据可写作 <code>D(i,j)=||fᵢ−fⱼ||₂</code>；真正关键在于保留所有时间对形成的二维 dense map。对角线附近承载短期变化，远离对角线的位置可表达较长期比较，后续卷积从中学习可判别的时序模式。</p>
-<h3>3.3 Progressive Attention：先筛选，再核验</h3>
-<p>作者没有把 RGB 与 DDM 直接拼接。intra-modal attention 先在每一种模态内部选择有效时间证据，避免某一路噪声立刻影响另一路；cross-modal attention 再让已经聚合的 appearance 与 motion 相互验证，最后才由分类头输出边界概率。这一顺序对 VLA 很有启发：机械臂减速只能提出候选，是否写记忆仍需对象状态或外观变化确认。</p>
-<h3>3.4 训练与部署边界</h3>
-<p>论文以边界监督端到端训练，并采用 balanced sampling 缓解边界帧远少于非边界帧的问题。推理时，帧级概率经阈值和局部极大值选择成为离散时刻。需要区分：原文短片段设置不自动等于严格因果；在流式 VLA 中，应仅用历史窗口建立 Feature Bank，并把局部峰确认造成的延迟作为指标报告。</p>
-<h2 id="exp">4. 实验与结果</h2>
-<p>Kinetics-GEBD 中，PC 的 F1@0.05 为 0.625，DDM-Net 为 0.764；TAPOS 中为 0.522 对 0.604。消融（论文表）显示 RGB+DDM 的平均 F1 为 0.8726，高于 RGB difference 的 0.8440；intra+cross attention 为 0.8726，高于简单平均的 0.8543。</p>
-<h2 id="limits">5. 优势与局限</h2>
+<p>Generic Event Boundary Detection（GEBD）要求不预设类别地找出人自然感到“事件切换”的时刻。难点不是动作分类，而是边界形态极杂：物体出现、姿态改变、镜头切换、注意力转移都算边界，同一段视频里还会叠加。DDM-Net 的判断是，单一光流或相邻帧 RGB 差只能回答“有没有变化”，回答不了“这个变化是否构成语义切换”。为此它做了三件事：把 ResNet 多层特征按空间池化与不同时间感受野展开成 9 层特征库；对每层计算所有帧对的欧氏距离，得到 T×T 的稠密差分图（Dense Difference Map，DDM）；再把差分图压回序列，与 RGB 特征做 intra-modal、cross-modal 两阶段注意力，让运动证据由外观证据确认。Kinetics-GEBD 验证集 F1@0.05 为 0.764，对照 PC 的 0.625。判定是：语义确认环节可直接复用的参考实现，但原设定非因果，接入 VLA 记忆写入前必须改成单侧窗口。</p>
+
+<h2 id="stage">2. 事件流水线定位</h2>
+<div class="flowline">
+<span>候选生成</span><span class="on">语义确认</span><span class="part">边界定位</span><span>记忆写入</span><span>检索</span><span>评测</span>
+</div>
+<p>它落在语义确认：对每一帧滑窗打分，输出“此处是否为人会感知的切换”。边界定位只做了一半（part）——给出帧级时刻与峰值筛选，不做起止区间配对，也不回归边界偏移。上游假设是可以取得一段前后对称的帧缓冲（离线视频或足够长的环形缓冲）；下游假设是确认出的时刻可直接作为写入单位，时刻精度由 F1@0.05 这类带容差的指标兜底。</p>
 <table>
-<tr>
-<th>优势</th>
-<th>局限 / 迁移注意点</th>
-</tr>
-<tr>
-<td>将“何处变化”与“变化是否有语义”分离；多层特征与两阶段融合均有对应消融。</td>
-<td>原任务可能使用中心短片段，不是严格因果；也没有具身接触、夹爪或对象关系信号。</td>
-</tr>
+<tr><th>项</th><th>内容</th></tr>
+<tr><td>输入</td><td>以第 <code>t</code> 帧为中心、<code>T=11</code> 个采样点、间隔 6 帧的短片段，外加整段视频的逐帧滑窗</td></tr>
+<tr><td>输出</td><td>每帧一个边界概率；经阈值与局部极大值筛选后得到离散时刻列表</td></tr>
+<tr><td>交给下游</td><td>“事件发生在此帧”的确认信号，供记忆写入按时刻截取前后片段；不提供区间与语义标签</td></tr>
 </table>
-<h2 id="end">6. 总结</h2>
-<p>对 VLA 最值得借鉴的是先在各模态内找变化证据，再跨模态确认。可将 robot state 作为第三条确认流，替代直接把 appearance 与 motion 相加。</p>
-<h2>图像与来源说明</h2>
-<p>本页仅保留原论文的动机/方法图，实验结论以文字呈现。图像优先来自作者公开 LaTeX 源码；页面内图片为原图的网页展示转换，原始 PDF/PNG 文件也保存在本页 <code>figures/</code> 目录。</p>
+
+<h2 id="problem">3. 问题与动机</h2>
+<p>前人的失效模式很具体。第一类是稀疏运动表示：光流或相邻帧 RGB 差只产生长度为 <code>T−1</code> 的序列，只比较相邻时刻，缓慢的状态推进（例如物体被逐渐移出画面）每帧差异都很小，而相机自运动或遮挡会制造大幅光流却没有语义切换，两类误差在同一条序列上无法区分。第二类是单层特征：最高层语义强但空间分辨率低，手部接触、物体微小位移这类细粒度线索在池化中被抹掉；低层细节清楚但无法判断变化是否重要，只取一层必然在某一端失守。第三类是朴素融合：把 RGB 与运动特征直接拼接或相加，某一路的噪声不经筛选就进入另一路，一帧遮挡即可把融合概率抬高。</p>
+<p>还有一个被论文接受的前提：边界定义本身带主观性，标注问的是“人是否感到切换”，不同标注者的容忍度不同。这决定了评价必须用容差而不是精确帧，也决定了模型学的是人类感知的先验，不是物理状态机的转移条件。</p>
+
+<h2 id="method">4. 方法拆解</h2>
+<img class="figure" src="figures/overview.png" alt="DDM-Net 方法总览图：多层特征库经稠密差分图与渐进注意力融合后输出边界概率">
+<p class="caption">作者 CVPR 2022 LaTeX 源码中的 overview 图，原始 PDF 见 <code>figures/overview-original.pdf</code>；图中以 T=5 示意流程，实际训练使用 T=11。</p>
+<h3>4.1 输入与时间表征</h3>
+<p>时间采样是复现时最先要对齐的超参。以当前帧 <code>t</code> 为中心，向两侧各取 <code>w=5</code> 个采样点，相邻采样点间隔 <code>s=6</code> 帧，因此片段长度 <code>T=2w+1=11</code>，覆盖 <code>t−30</code> 到 <code>t+30</code> 帧。这个选择来自表 4(b) 的扫描：间隔过密时相邻帧差异近似噪声，过稀则跨过事件本身，<code>s=6</code> 在精度与覆盖之间取平衡。<b>空间层级取 <code>m=3</code></b>，对 ResNet-50 不同深度的特征图做平均空间池化，得到三条语义粒度不同的序列，其中最高层（layer4）序列单独留作 RGB 支路 <code>A∈ℝ^{C×T}</code>；<b>时间层级取 <code>n=3</code></b>，每条序列再经三组不同时间感受野的时间卷积，最终形成 <code>L=m×n=9</code> 层特征库。骨干为 ImageNet 预训练 ResNet-50，端到端训练，优化器 Adam、批大小 32、学习率 1e-5。输入分辨率与训练 epoch 数未在已核验的公开材料中确认。</p>
+<h3>4.2 关键机制</h3>
+<p><b>稠密差分图的维度含义。</b>对每一层的 T 个特征，计算所有帧对的欧氏距离：<code>FD(i,j)=√(Σ_c (A_i^c−A_j^c)²)</code>，每层得到一张 <code>T×T</code> 矩阵，9 层堆叠后为 <code>L×T×T</code>，再经若干卷积层映射为 <code>M∈ℝ^{C×T×T}</code>。两个时间轴分别表示“参考帧”与“被比较帧”：第 <code>i</code> 行是第 i 帧与全片段所有帧的差异剖面，对角线为同帧自比、恒为零，靠近对角线的元素对应短期变化，远离对角线对应跨越较长的比较；置换对称意味着上下三角信息冗余。相对长度为 <code>T−1</code> 的稀疏运动序列，它给出 <code>T(T−1)/2</code> 对比较，这是“稠密”的实际含义。</p>
+<p><b>先压回序列，再谈融合。</b><code>M</code> 不能直接与 <code>A</code> 做注意力，需要 Map-Squeezed Attention：以 <code>A_i</code> 为条件对第 <code>i</code> 行加权，<code>γ_ij=softmax_j(W_μᵀ(W_AᵀA_i+W_MᵀM_ij))</code>，<code>D_i=Σ_j γ_ij M_ij</code>，得到 <code>D∈ℝ^{C×T}</code>。这一步把“第 i 帧与全片段的差异”压成一个向量，等于让外观特征自己决定该看哪些时间距离。</p>
+<p><b>两阶段注意力。</b>intra-modal 阶段用两套独立的 6 层 transformer decoder，各带 <code>ω=5</code> 个可学习 query（标准正态初始化加可学习位置嵌入），key/value 取 <code>A</code> 或 <code>D</code> 并加正弦位置编码；query 先做 self-attention 建模彼此依赖，再 cross-attention 从本模态聚合高激活片段，输出精炼后的 <code>q′_A</code>、<code>q′_D</code>。cross-modal 阶段是两个对称的 6 层 co-attention：一个以 <code>q′_A</code> 为 query、<code>q′_D</code> 为 key/value，另一个反过来，得到被差分证据调制的 <code>q″_A</code> 与被外观条件化的 <code>q″_D</code>。论文消融显示这一阶段不加位置编码更好，因为跨模态要比较的是内容对应关系而非时序位置。</p>
+<p><b>分路监督而不是只在末端融合。</b>两路各自平均池化后过全连接层，得到外观 logit <code>l_A</code> 与差分 logit <code>l_D</code>，融合为 <code>l=α·l_A+(1−α)·l_D</code>，<code>α</code> 可学习；损失是三路二元交叉熵之和（<code>l_A</code>、<code>l_D</code>、<code>l</code> 各一项）。这意味着两条证据在训练时就被要求单独可分，而不是靠融合头掩盖某一路的失效——复现时若只保留融合损失，单路退化将无法察觉。训练采用 balanced sampling：所有边界帧全部保留，每连续 <code>r≈6</code> 个非边界帧随机取 1 个，依据是慢变先验，连续非边界帧的信息高度冗余。</p>
+<h3>4.3 输出与在线边界</h3>
+<p>推理对整段视频逐帧滑窗，得到置信度序列后做两步后处理：概率大于阈值 <code>θ=0.5</code>，且在 <code>[−5,5]</code> 帧范围内为局部极大值。后处理不需要两两 IoU，单视频约 0.0003 秒（V100），因此开销可忽略，真正的成本在前面每帧一次前向。</p>
+<p><b>在线设定必须写清楚：该方法是非因果的。</b>中心窗口让判定第 <code>t</code> 帧时直接读取了 <code>t+30</code> 帧；按 30 fps 折算，前瞻约 1 秒。改成因果版本时把窗口换成 <code>[t−2w, t]</code> 只是第一步，局部极大值判定还要再等右侧 5 个采样点才能确认峰值，因此端到端确认延迟约为一个完整窗口（约 1 秒，按 w·s 推算）。这一延迟与采样间隔成正比，想压低延迟就得缩小 <code>s</code>，代价是表 4(b) 显示的精度下降。另需注意它只输出时刻、不输出区间，若下游按“相邻边界之间”切段，一次漏检就会把两个事件并成一段。</p>
+
+<h2 id="evidence">5. 证据与实验</h2>
+<p>评测用 Kinetics-GEBD 与 TAPOS 两个数据集，指标为 F1@0.05（允许边界偏差在视频时长 5% 以内）与多容差平均 F1。表 1 报告 Kinetics-GEBD 验证集上 F1@0.05 从 PC 的 0.625 提升到 0.764；表 2 报告 TAPOS 验证集从 0.522 提升到 0.604。两处提升幅度与摘要中“14% 与 8%”的说法一致。</p>
+<p>消融给出三个可直接指导选型的结论。差分表示上，用 RGB 差分替代多层 DDM 时平均 F1 为 0.8440，换成 DDM 后为 0.8726，说明增益来自“多层 + 成对差分”而不只是多了一层卷积。聚合方式上，把输入特征直接时间平均为 0.8543，只做 intra 或只做 cross 都在 0.86 附近，两者串联才到 0.8726，说明“各自筛选”和“互相核验”缺一不可。层级配置上，同时使用空间层级与时间层级优于只用其一，与 4.1 的设计对应。</p>
+<p>未在已核验的公开材料中确认的项：输入图像分辨率、训练 epoch 数、端到端单帧推理延迟（论文只报告了后处理耗时）、以及在自建机器人数据上的迁移结果。</p>
+
+<h2 id="fit">6. 优点、局限与 VLA 适配</h2>
+<div class="duo">
+<div><h4>可迁移</h4><p>“每路先独立聚合成一个片段级证据，再跨路互证”的结构，正好对应 VLA 里“机械臂减速提出候选、视觉确认是否真的换了状态”的分工。balanced sampler 与阈值加局部极大的后处理与模型无关，可整体搬到任何事件检测流水线。分路 BCE 监督也值得保留：它让单路失效在训练曲线上可见。</p></div>
+<div><h4>不成立的前提</h4><p>第一，中心窗口假定可以回看未来，在线机器人没有这个条件。第二，边界标签来自人类观看视频的感知判断，而 VLA 关心的是任务状态是否转移，两者在“缓慢接近但尚未接触”这类片段上会给出不同答案。第三，它只用单目外观与帧间差分，没有任何本体感受、接触或力信号，因此对“画面几乎不变但夹爪已闭合”这类事件完全不敏感。</p></div>
+</div>
+<p><b>把两路证据扩成 appearance / motion / robot-state 三路，代价集中在三处。</b>延迟上，状态向量维度低，编码器本身几乎不增加算力，但 cross-modal 从一对变成三对互证，跨模态层的前向接近三倍；更关键的是本体感受常以 100–1000 Hz 输出而视频只有 30 Hz，需要重采样与缓冲，端到端延迟由最慢一路决定，实际增加的是等待对齐的时间而不是矩阵乘法。同步上，相机曝光、传输抖动与关节时间戳之间存在数十毫秒偏移，对按视频时长百分比取容差的 F1 几乎无影响，但会改变“究竟把哪一帧写进记忆”，在接触瞬间可能差一到两帧。标注上，GEBD 只问“人是否感到切换”，三路方案必须重新定义标签体系：只有视觉变化、只有状态变化、两者同时，三种情况要分别给规则；状态边界可由机器人日志自动生成，成本低但与语义边界不等价，仍需人工抽检与冲突仲裁。最小改造是不要把状态做成第三张 dense map，而是先用状态差分做门控，只在夹爪开合、力突变处放行外观证据，避免重构注意力。</p>
+
+<h2 id="repro">7. 落地清单</h2>
+<ul class="checklist">
+<li>冻结官方权重，在自有机器人视频上以 <code>w=5</code>、<code>s=6</code>、<code>θ=0.5</code> 跑一遍离线推理，把输出时刻与人工标注对齐，先量出域差异再决定是否接入。</li>
+<li>把中心窗口改为单侧 <code>[t−2w, t]</code> 重训，并在日志中同时记录“边界真实时刻”与“确认时刻”，把差值作为记忆写入延迟指标上报。</li>
+<li>按 balanced sampling 复现训练：保留全部边界帧，非边界帧按 1/6 稀疏采样，同时保留 <code>l_A</code>、<code>l_D</code>、<code>l</code> 三路损失，用单路 F1 监控退化。</li>
+<li>接入 robot state 时先实现门控版本：仅在夹爪开合与力突变窗口内放行候选，验证收益后再考虑扩成三路 co-attention。</li>
+<li>统一时间基准：以相机曝光时间戳为准，将关节与夹爪重采样到视频帧率，并把残余偏移超过一帧的样本单独统计。</li>
+</ul>
+<div class="srcbox">
+<p><b>来源：</b>arXiv abs 页 <a href="https://arxiv.org/abs/2112.04771">arXiv:2112.04771</a>（v2，2022-04-01，CVPR 2022 camera-ready）；CVF 论文页 <a href="https://openaccess.thecvf.com/content/CVPR2022/papers/Tang_Progressive_Attention_on_Multi-Level_Dense_Difference_Maps_for_Generic_Event_CVPR_2022_paper.pdf">CVPR 2022 open access</a>；官方代码 <a href="https://github.com/MCG-NJU/DDM">MCG-NJU/DDM</a>。数字对应原文表 1、表 2 与表 4 的消融。</p>
+<p><b>图像说明：</b>页面图片为作者 LaTeX 源码中 overview 图的 PNG 渲染，原始文件为 <code>figures/overview-original.pdf</code>，同目录保留 <code>overview.png</code>。</p>
+</div>
+<p class="pagefoot">相关页面：<a href="../flowgebd/index.html">FlowGEBD · 低成本候选生成</a> · <a href="../kemo/index.html">KEMO · 事件驱动关键帧记忆</a> · <a href="../../index.html">返回总站</a></p>
 </article>
+</div>
 </main>
 </body>
 </html>

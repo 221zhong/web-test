@@ -3,66 +3,233 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>历史关键事件检测专题｜VLA 历史记忆</title>
+<title>专题一 · 历史关键事件检测｜VLA 历史记忆</title>
 <link rel="stylesheet" href="../style.css">
 </head>
 <body>
 <header>
 <div class="wrap">
-<div class="eyebrow">VLA Historical Memory · Topic</div>
-<h1>历史关键事件检测专题</h1>
-<p>从事件候选、在线提交到长期历史检索的论文路线</p>
+<div class="crumb"><a href="../index.html">VLA 历史记忆</a> / 专题一</div>
+<div class="eyebrow">Topic 01 · Key Event Detection</div>
+<h1>历史关键事件检测</h1>
+<p>VLA 如何从连续观测中决定「哪一刻值得写入长期记忆」，并保证写进去的历史在以后还能被找回</p>
 <nav>
 <a href="../index.html">← 返回总站</a>
+<a href="kv-cache-event-memory/index.html">专题二 · KV Cache 与事件记忆</a>
 </nav>
 </div>
 </header>
 <main>
-<section class="lead">P1 拆解 P0 的“候选—确认—提交—维护”链条：运动表征、阶段识别、在线实例提交、选择性历史、程序性历史增强、事件级 VLM memory；P2 则检验这些历史能否被未来查询找回。方法图均来自作者 LaTeX 源码；OAT 未找到可核验原图，明确省略。</section>
+
+<section class="lead">
+<b>结论先行：</b>这条链条上没有一个工作可以整段照搬。可组合的最小方案是——用 <a href="kemo/index.html">KEMO</a> 的运动学峰值做候选（纯本体信号、几十行代码），用 <a href="ddm-net/index.html">DDM-Net</a> 的「模态内先聚合、跨模态再互证」结构做语义确认，用 <a href="cag-qil/index.html">CAG-QIL</a> 的边沿触发提交器决定何时落库，用 <a href="hierarchical-event-memory/index.html">Hierarchical Event Memory</a> 的尺度树与频率预算解决长期容量，最后用 <a href="ego4d-episodic-memory/index.html">Ego4D EM</a> 的查询命中率而不是边界 F1 验收。冲突点集中在两处：DDM-Net 与 Motion-Aware Self-Supervision 依赖中心窗口（含未来帧），与 CAG-QIL、OAT、MATR 的「不可回改」在线约束直接对立；KEMO 的峰值确认窗会推迟写入，短阶段任务可能等不到确认就进入下一步。
+</section>
+
+<h2>1. 十二篇覆盖的事件流水线</h2>
+<div class="flowline">
+<span>候选生成</span><span>语义确认</span><span>边界定位</span><span>记忆写入</span><span>检索</span><span>评测</span>
+</div>
+<div class="wide">
+<table>
+<tr><th>环节</th><th>代表工作</th><th>它真正解决的问题</th><th>面向 VLA 的设计含义</th></tr>
+<tr><td>候选生成</td><td><a href="flowgebd/index.html">FlowGEBD</a>、<a href="kemo/index.html">KEMO</a>、<a href="motion-aware-ssl/index.html">Motion-Aware SSL</a></td><td>如何用零参数规则或本体信号，把密集视频压成少数可疑时刻</td><td>机械臂减速、夹爪开合、接触力变化，比像素光流更干净也更便宜。</td></tr>
+<tr><td>语义确认</td><td><a href="ddm-net/index.html">DDM-Net</a>、<a href="oadtr/index.html">OadTR</a>、<a href="event-vstream/index.html">Event-VStream</a></td><td>「有变化」不等于「是事件」，需要外观、类别上下文或语言线索二次确认</td><td>把 robot state 作为第三条确认流，而不是与 appearance 直接相加。</td></tr>
+<tr><td>边界定位与提交</td><td><a href="cag-qil/index.html">CAG-QIL</a>、<a href="oat/index.html">OAT</a>、<a href="matr/index.html">MATR</a>、<a href="hat/index.html">HAT</a></td><td>在线、不可回改的前提下，何时把 pending 升级为 committed</td><td>提交判据要可学习，并且要为错误写入设计代价，而不是只优化边界 F1。</td></tr>
+<tr><td>长期维护</td><td><a href="hierarchical-event-memory/index.html">Hierarchical Event Memory</a></td><td>固定预算下，不同时间尺度的事件该分到多少槽位</td><td>近期细、远期粗；溢出时先相似合并再 FIFO，而不是直接丢弃。</td></tr>
+<tr><td>端到端验证</td><td><a href="kemo/index.html">KEMO</a></td><td>记忆选择是否真的改善长程操作成功率</td><td>用任务/子任务成功率检验，而不是只测边界指标。</td></tr>
+<tr><td>验收</td><td><a href="ego4d-episodic-memory/index.html">Ego4D Episodic Memory</a></td><td>写入的历史能否被未来查询命中</td><td>同时报告查询命中率、写入/检索延迟与记忆是否改善控制。</td></tr>
+</table>
+</div>
+
+<h2>2. 横向对比（按优先级）</h2>
+<div class="wide">
+<table class="cmp">
+<tr>
+<th>编号</th><th>工作</th><th>发表</th><th>输出与提交方式</th><th>在线性</th><th>最小可复用件</th>
+</tr>
+<tr>
+<td>P0-1</td><td><a href="ddm-net/index.html">DDM-Net</a></td><td>CVPR 2022</td>
+<td>帧级边界概率，阈值 + 局部极大值成为离散时刻</td>
+<td>非因果：中心窗口约前瞻 1 秒</td>
+<td>intra-modal / cross-modal 两阶段证据核验 + 后处理规则</td>
+</tr>
+<tr>
+<td>P0-2</td><td><a href="flowgebd/index.html">FlowGEBD</a></td><td>WACV 2024</td>
+<td>候选时刻，无类别、无实例</td>
+<td>PT 因果；FN 与 refinement 需整段视频，管线离线</td>
+<td>patch 内非零位移像素存活率低于 0.4 即记候选的计数规则</td>
+</tr>
+<tr>
+<td>P0-3</td><td><a href="cag-qil/index.html">CAG-QIL</a></td><td>ICCV 2021</td>
+<td>实例在决策由 1 翻回 0 时提交，提交后不可修改</td>
+<td>严格因果，提交发生在动作结束之后</td>
+<td>0→1 开、1→0 关的边沿触发提交器</td>
+</tr>
+<tr>
+<td>P0-4</td><td><a href="hierarchical-event-memory/index.html">Hierarchical Event Memory</a></td><td>ICCV 2025</td>
+<td>多尺度事件 proposal memory，query 到来时检索定位</td>
+<td>因果；低延迟以牺牲定位精度换取</td>
+<td>尺度树 + 频率预算分配 + 相似合并/溢出 FIFO</td>
+</tr>
+<tr>
+<td>P0-5</td><td><a href="kemo/index.html">KEMO</a></td><td>arXiv 2026</td>
+<td>关键帧写成 16 token/帧的有序记忆，注入 π0.5</td>
+<td>因果，但峰值需 20–60 帧确认窗后才写入</td>
+<td>运动学峰值检测器 <code>S_t = 1/(1+δ̄_t)</code> 取局部极大 + 不应期</td>
+</tr>
+<tr>
+<td>P1-1</td><td><a href="motion-aware-ssl/index.html">Motion-Aware SSL</a></td><td>WACV 2023</td>
+<td>不产出事件，只提供对帧间位移敏感的编码器特征</td>
+<td>非因果：微调输入覆盖候选帧前后</td>
+<td>插在 conv3_x 之后的可微 MotionSqueeze 层</td>
+</tr>
+<tr>
+<td>P1-2</td><td><a href="oadtr/index.html">OadTR</a></td><td>ICCV 2021</td>
+<td>逐帧动作类别，没有起止时间</td>
+<td>因果，固定长度历史窗口</td>
+<td>task token 读出头 + 历史窗口编码器</td>
+</tr>
+<tr>
+<td>P1-3</td><td><a href="oat/index.html">OAT</a></td><td>ECCV 2022</td>
+<td>滑动窗口内多尺度 anchor 解出整实例，提交即不可回改</td>
+<td>因果；起点最远到窗口左界，超出被截断</td>
+<td>Online Suppression Network 提交门控</td>
+</tr>
+<tr>
+<td>P1-4</td><td><a href="matr/index.html">MATR</a></td><td>ECCV 2024</td>
+<td>flag 门控按需写入片段记忆，先预测终点再回溯起点</td>
+<td>因果；须等终点可见，提交延迟下限为动作时长</td>
+<td>flag 门控 FIFO 片段记忆 + 终点条件化起点回溯头</td>
+</tr>
+<tr>
+<td>P1-5</td><td><a href="hat/index.html">HAT</a></td><td>ECCV 2024</td>
+<td>短窗口 anchor 经历史增强后解码实例</td>
+<td>因果；历史长度按数据集手调且固定</td>
+<td>可学习 history token 压缩解码器 + 弱监督校准头</td>
+</tr>
+<tr>
+<td>P1-6</td><td><a href="event-vstream/index.html">Event-VStream</a></td><td>arXiv 2026</td>
+<td>事件边界触发 VLM 推理与持久记忆写入</td>
+<td>严格因果，流式</td>
+<td>三线索打分 + 迟滞的事件触发调度器</td>
+</tr>
+<tr>
+<td>P2-1</td><td><a href="ego4d-episodic-memory/index.html">Ego4D EM</a></td><td>CVPR 2022</td>
+<td>不提供记忆模块，提供「证据区间/轨迹」的标注协议与指标</td>
+<td>离线检索全历史，不强制因果</td>
+<td>response window 与 response track 标注格式</td>
+</tr>
+</table>
+</div>
+
+<h2>3. 架构综合：模块互补与不兼容点</h2>
+<div class="route">
+<div class="card"><div class="step">L0 · 候选</div><h3>本体信号优先</h3><p>KEMO 的关节减速峰值与 FlowGEBD 的像素存活率都是零训练方案。机器人场景里前者信号更干净，可先用它把每个控制步压成「普通 / 可疑」两类，再决定是否调用视觉模型。</p></div>
+<div class="card"><div class="step">L1 · 确认</div><h3>两阶段互证</h3><p>DDM-Net 的 intra → cross 顺序可直接扩成三路：motion 先在模态内聚合，再由 appearance 与 robot state 分别核对。OadTR 的 task token 提供「现在处于哪个阶段」的上下文，Event-VStream 的三线索打分提供阈值化封装。</p></div>
+<div class="card"><div class="step">L2 · 提交</div><h3>边沿触发写入</h3><p>CAG-QIL 给出可学习的提交判据，OAT 给出窗口级实例解码，MATR 给出「按需写入 + 终点回溯」，HAT 给出长历史压缩注入。四者可拼成一个 pending / committed 双态写入器。</p></div>
+<div class="card"><div class="step">L3 · 维护</div><h3>预算与合并</h3><p>Hierarchical Event Memory 的尺度树与频率预算，回答「多尺度事件各占多少槽位」；溢出时的相似合并优先于 FIFO，可直接替换常规的滑窗淘汰。</p></div>
+</div>
+<p><b>结构性冲突（选型时必须先做取舍）：</b></p>
+<ul class="incompat">
+<li><b>因果性冲突。</b>DDM-Net 与 Motion-Aware SSL 都依赖中心窗口，判定一个边界时要用到它之后的帧；CAG-QIL、OAT、MATR、HAT 则要求提交后不可回改。二者同用，必须把 DDM-Net 改成单侧历史窗口，并把由此产生的一个窗口延迟计入系统指标——这正是 KEMO 用 20–60 帧确认窗换来的代价。</li>
+<li><b>可改写性冲突。</b>On-TAL 系列（CAG-QIL / OAT / MATR / HAT）把「已提交不可改」当作定义的一部分，而 Hierarchical Event Memory 依靠合并与更新维护记忆。若同时要低延迟与可纠错，需要把「提交」与「落库」拆成两级：提交只冻结边界，落库仍允许按相似度合并。</li>
+<li><b>类别开闭冲突。</b>OadTR 与 HAT 都是闭集动作类别，DDM-Net 与 FlowGEBD 类别无关。VLA 的子任务空间通常是开放且任务特定的，因此语义确认层应保持类别无关，把类别信息交给任务指令而不是分类头。</li>
+<li><b>记忆形态冲突。</b>Hierarchical Event Memory 存 proposal 特征，KEMO 存有序 memory token，Event-VStream 存 L2 归一化的事件级嵌入。三者的检索接口不可互换；若下游是 VLA 策略而非 VLM 问答，KEMO 的 token 注入形态最省改造。</li>
+</ul>
+
+<h2>4. 推荐阅读顺序</h2>
+<div class="wide">
+<table>
+<tr><th>阶段</th><th>顺序</th><th>目标</th></tr>
+<tr><td>建立最小闭环</td><td><a href="kemo/index.html">KEMO</a> → <a href="ddm-net/index.html">DDM-Net</a></td><td>先看端到端怎么跑通，再补语义确认为什么需要两阶段证据。</td></tr>
+<tr><td>理解在线提交</td><td><a href="cag-qil/index.html">CAG-QIL</a> → <a href="oat/index.html">OAT</a> → <a href="matr/index.html">MATR</a> → <a href="hat/index.html">HAT</a></td><td>按「不可回改」这条约束读，比较四种提交粒度与延迟来源。</td></tr>
+<tr><td>补候选与表征</td><td><a href="flowgebd/index.html">FlowGEBD</a> → <a href="motion-aware-ssl/index.html">Motion-Aware SSL</a> → <a href="oadtr/index.html">OadTR</a></td><td>候选生成可以零训练，表征层决定边界是否可分，阶段识别提供上下文。</td></tr>
+<tr><td>长期维护与事件 VLM</td><td><a href="hierarchical-event-memory/index.html">Hierarchical Event Memory</a> → <a href="event-vstream/index.html">Event-VStream</a></td><td>把「存什么、存多少」与「事件触发推理」接起来。</td></tr>
+<tr><td>验收</td><td><a href="ego4d-episodic-memory/index.html">Ego4D EM</a></td><td>用未来查询命中率检验写入质量，而不是只看边界 F1。</td></tr>
+</table>
+</div>
+
+<h2>5. 十二篇精读</h2>
 <section class="grid">
+<a class="paper-card" href="ddm-net/index.html">
+<span class="tag">P0-1 · 语义边界确认</span>
+<h3>DDM-Net</h3>
+<p>多层特征差替代光流，intra-modal 先筛证据、cross-modal 再互证。</p>
+<p class="meta">Tang et al. · CVPR 2022</p>
+</a>
+<a class="paper-card" href="flowgebd/index.html">
+<span class="tag">P0-2 · 低成本候选生成</span>
+<h3>FlowGEBD</h3>
+<p>两条非参数光流规则，零训练零标注，单帧 6.5 ms。</p>
+<p class="meta">Gothe et al. · WACV 2024</p>
+</a>
+<a class="paper-card" href="cag-qil/index.html">
+<span class="tag">P0-3 · 在线提交决策</span>
+<h3>CAG-QIL</h3>
+<p>把「何时提交」做成可学习的 0/1 决策，提交后不可回改。</p>
+<p class="meta">Kang et al. · ICCV 2021</p>
+</a>
+<a class="paper-card" href="hierarchical-event-memory/index.html">
+<span class="tag">P0-4 · 分层事件存储</span>
+<h3>Hierarchical Event Memory</h3>
+<p>帧队列升级为多尺度 proposal 树，按尺度频率分配固定槽位。</p>
+<p class="meta">Zheng et al. · ICCV 2025</p>
+</a>
+<a class="paper-card" href="kemo/index.html">
+<span class="tag">P0-5 · VLA 端到端验证</span>
+<h3>KEMO</h3>
+<p>关节减速提名、视觉去重、有序 memory token 注入 π0.5。</p>
+<p class="meta">Zeng et al. · arXiv 2026</p>
+</a>
 <a class="paper-card" href="motion-aware-ssl/index.html">
 <span class="tag">P1-1 · 表征预训练</span>
 <h3>Motion-Aware Self-Supervision</h3>
-<p>将可微 MotionSqueeze 放进自监督编码器，为 GEBD 提供运动敏感特征。</p>
+<p>可微 MotionSqueeze 放进自监督编码器，让特征对位移敏感。</p>
 <p class="meta">Rai et al. · WACV 2023</p>
 </a>
 <a class="paper-card" href="oadtr/index.html">
 <span class="tag">P1-2 · 当前阶段识别</span>
 <h3>OadTR</h3>
-<p>task token 读出历史，预测未来特征作为训练期辅助。</p>
+<p>task token 读出历史，未来表征仅作训练期辅助。</p>
 <p class="meta">Wang et al. · ICCV 2021</p>
 </a>
 <a class="paper-card" href="oat/index.html">
 <span class="tag">P1-3 · 在线 proposal</span>
 <h3>OAT</h3>
-<p>多尺度 anchor 从滑动窗口直接产出可提交的动作实例。</p>
+<p>滑动窗口内多尺度 anchor 直接产出可提交实例。</p>
 <p class="meta">Kim et al. · ECCV 2022</p>
 </a>
 <a class="paper-card" href="matr/index.html">
 <span class="tag">P1-4 · 选择性 memory</span>
 <h3>MATR</h3>
-<p>先在当前段找终点，再回溯 memory queue 寻找起点。</p>
+<p>flag 门控按需写入，先找终点再回溯起点。</p>
 <p class="meta">Song et al. · ECCV 2024</p>
 </a>
 <a class="paper-card" href="hat/index.html">
 <span class="tag">P1-5 · 程序性历史</span>
 <h3>HAT</h3>
-<p>以 future-supervised history module 增强短窗口 anchor。</p>
+<p>把长历史压成 history token，弱监督校准后注入短窗口 anchor。</p>
 <p class="meta">Reza et al. · ECCV 2024</p>
 </a>
 <a class="paper-card" href="event-vstream/index.html">
 <span class="tag">P1-6 · Event VLM</span>
 <h3>Event-VStream</h3>
-<p>事件边界触发推理与持久记忆更新，取代固定间隔采样。</p>
+<p>事件边界决定何时推理、何时写记忆，取代固定间隔采样。</p>
 <p class="meta">Guo et al. · arXiv 2026</p>
 </a>
 <a class="paper-card" href="ego4d-episodic-memory/index.html">
 <span class="tag">P2-1 · 记忆评测基准</span>
 <h3>Ego4D Episodic Memory</h3>
-<p>用语言、物体图像和高层活动三类查询，检验历史视频是否真正可检索。</p>
+<p>用 NLQ、VQ、MQ 检验写入的历史能否被未来查询找回。</p>
 <p class="meta">Grauman et al. · CVPR 2022</p>
 </a>
 </section>
+
+<div class="card">
+<p class="meta">阅读约定：每篇精读固定七节（核心摘要 / 流水线定位 / 问题与动机 / 方法拆解 / 证据与实验 / 优点局限与 VLA 适配 / 落地清单），页首决策卡给出「最小可复用件 / 主要风险 / 复现门槛」。数字仅保留论文报告值，无法核验的一律标注「未在已核验的公开材料中确认」。方法图取自作者 LaTeX 源码；无可核验原图的页面不插图并说明原因。</p>
+</div>
+
+<p class="pagefoot">相关专题：<a href="kv-cache-event-memory/index.html">专题二 · KV Cache 与事件记忆</a> · <a href="../index.html">返回总站</a></p>
 </main>
 </body>
 </html>
