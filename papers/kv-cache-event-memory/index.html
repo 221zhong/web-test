@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>KV Cache 与事件记忆专题｜VLA 历史记忆</title>
+<link rel="stylesheet" href="../../style.css">
+</head>
+<body>
+<header><div class="wrap">
+<div class="eyebrow">VLA Historical Memory · Topic</div>
+<h1>KV Cache 与事件记忆专题</h1>
+<p>从跨控制步复用、事件驱动写入到流式长期检索的 11 篇论文路线</p>
+<nav><a href="../../index.html">← 返回总站</a></nav>
+</div></header>
+<main>
+<section class="lead"><b>专题问题：</b>VLA 与 Video LLM 的历史不应等同于持续增长的 context。系统需要在每个时间步判断：哪些已有 KV 可直接复用（reuse），哪些局部状态必须刷新（refresh），哪些经事件确认的信息应压缩并写入长期记忆（commit），以及如何在后续 query 到来时检索并回载。</section>
+
+<h2>11 篇工作如何覆盖完整路径</h2>
+<table>
+<tr><th>系统环节</th><th>代表工作</th><th>关键问题</th><th>面向 VLA 的含义</th></tr>
+<tr><td>控制步复用</td><td>VLA-Cache</td><td>相邻观测哪些 token 没有变化？</td><td>降低逐控制步 prefill 与 attention 成本。</td></tr>
+<tr><td>事件写入</td><td>KEMO、StreamMem、HERMES</td><td>哪些变化值得保留，且如何在固定预算中压缩？</td><td>将 motion、appearance、robot state 共同作为 commit 门控。</td></tr>
+<tr><td>多任务运行时</td><td>OxyGen</td><td>控制、对话和记忆构建如何共享同一观测？</td><td>跨任务共享 KV，避免重复编码。</td></tr>
+<tr><td>长期检索</td><td>ReKV、LiveVLM、StreamKV</td><td>如何从长历史中找到 query 相关证据？</td><td>以事件段、摘要和外部存储组织可回载历史。</td></tr>
+<tr><td>预算与压缩</td><td>InfiniPot-V、Video-MemComp、VidKV</td><td>有限显存应分给哪些 token、层和精度？</td><td>用事件重要性补足时间冗余、层敏感度和量化策略。</td></tr>
+</table>
+
+<h2>建议系统架构</h2>
+<section class="grid">
+<div class="card"><span class="tag">L0 · 热路径</span><h3>当前控制窗口</h3><p>以 VLA-Cache 为参照，复用稳定 token，仅刷新局部变化区域的 KV；这条路径服务固定频率的动作控制。</p></div>
+<div class="card"><span class="tag">L1 · 事件层</span><h3>确认后写入</h3><p>以 KEMO、StreamMem 和 HERMES 为参照，用 motion 提出候选，再以 appearance 与 robot state 确认，将状态转移写成事件级 KV 或摘要。</p></div>
+<div class="card"><span class="tag">L2 · 冷历史</span><h3>检索与回载</h3><p>以 ReKV、LiveVLM 和 StreamKV 为参照，将事件段存入可检索历史；必要时以 InfiniPot-V、Video-MemComp、VidKV 控制容量与精度。</p></div>
+</section>
+
+<h2>推荐阅读顺序</h2>
+<table>
+<tr><th>阶段</th><th>阅读顺序</th><th>目标</th></tr>
+<tr><td>VLA 基线</td><td>VLA-Cache → KEMO</td><td>区分跨步计算复用与事件驱动长期记忆写入。</td></tr>
+<tr><td>流式记忆</td><td>StreamMem → HERMES → OxyGen</td><td>理解固定预算、分层语义和多任务共享运行时。</td></tr>
+<tr><td>长历史检索</td><td>ReKV → LiveVLM → StreamKV</td><td>比较外部回载、短长双缓存与事件分段检索。</td></tr>
+<tr><td>极限压缩</td><td>InfiniPot-V → Video-MemComp → VidKV</td><td>比较 token 淘汰、逐层预算和低比特量化的互补关系。</td></tr>
+</table>
+
+<h2>论文精读</h2>
+<section class="grid">
+<a class="paper-card" href="../vla-cache/index.html"><span class="tag">P0 · 控制步复用</span><h3>VLA-Cache</h3><p>以视觉 token 变化决定 KV reuse 与重算。</p><p class="meta">VLA · 2025</p></a>
+<a class="paper-card" href="../kemo/index.html"><span class="tag">P0 · 事件写入</span><h3>KEMO</h3><p>motion 候选、视觉确认与关键帧 memory 融合。</p><p class="meta">VLA · 2026</p></a>
+<a class="paper-card" href="../streammem/index.html"><span class="tag">P0 · 固定 KV memory</span><h3>StreamMem</h3><p>query-agnostic 剪枝与 frame-wise merge。</p><p class="meta">Streaming Video LLM · 2025</p></a>
+<a class="paper-card" href="../hermes/index.html"><span class="tag">P0 · 分层 KV</span><h3>HERMES</h3><p>浅层细节与深层摘要组成分层历史。</p><p class="meta">Streaming Video LLM · 2026</p></a>
+<a class="paper-card" href="../oxygen/index.html"><span class="tag">P0 · 共享运行时</span><h3>OxyGen</h3><p>跨任务 KV 共享与跨帧连续调度。</p><p class="meta">VLA serving · 2026</p></a>
+<a class="paper-card" href="../rekv/index.html"><span class="tag">P1 · KV 回载</span><h3>ReKV</h3><p>将分段历史 KV 外存并按 query 检索。</p><p class="meta">Streaming VideoQA · ICLR 2025</p></a>
+<a class="paper-card" href="../livevlm/index.html"><span class="tag">P1 · 在线 QA</span><h3>LiveVLM</h3><p>协调短期与长期视觉 KV 的即时回答。</p><p class="meta">Streaming Video LLM · 2025</p></a>
+<a class="paper-card" href="../infinipot-v/index.html"><span class="tag">P1 · 时间压缩</span><h3>InfiniPot-V</h3><p>以时间冗余与 value 显著性维持固定预算。</p><p class="meta">Streaming Video LLM · 2025</p></a>
+<a class="paper-card" href="../streamkv/index.html"><span class="tag">P1 · 事件段检索</span><h3>StreamKV</h3><p>语义分段、段摘要与逐层自适应压缩。</p><p class="meta">Streaming VideoQA · AAAI 2026</p></a>
+<a class="paper-card" href="../video-memcomp/index.html"><span class="tag">P1 · 敏感度预算</span><h3>Video-MemComp</h3><p>在层敏感度与局部压缩误差之间分配 KV。</p><p class="meta">Streaming Video LLM · 2026</p></a>
+<a class="paper-card" href="../vidkv/index.html"><span class="tag">P2 · 低比特量化</span><h3>VidKV</h3><p>以极低比特 Key/Value 量化拓展可用容量。</p><p class="meta">Video LLM · 2025</p></a>
+</section>
+</main>
+</body>
+</html>

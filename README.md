@@ -27,6 +27,8 @@
 
 该专题关注 VLA / Video-LLM 在固定显存预算下，如何复用、选择、压缩、检索与分层维护 KV Cache。它与专题一的关系是：专题一决定何时形成或提交关键事件，专题二决定已写入信息以何种 KV 表征保存、压缩与读取。
 
+专题总览：[KV Cache 与事件记忆专题](https://221zhong.github.io/web-test/papers/kv-cache-event-memory/)。
+
 | 优先级 | 工作 | 在线精读页面 | 关注点 |
 | --- | --- | --- | --- |
 | P0 | VLA-Cache | [打开网页](https://221zhong.github.io/web-test/papers/vla-cache/) | 跨控制步的自适应视觉 token / KV 复用 |
