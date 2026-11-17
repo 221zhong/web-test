@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>ReKV：Streaming Video Question-Answering｜论文精读</title>
+  <link rel="stylesheet" href="../../style.css">
+</head>
+<body>
+<header><div class="wrap">
+  <div class="eyebrow">VLA Historical Key Event Detection · Paper Deep Read</div>
+  <h1>ReKV：Streaming Video Question-Answering with In-context Video KV-Cache Retrieval</h1>
+  <p>Shangzhe Di et al. · ICLR 2025 · 上海交通大学、阿里巴巴集团｜<a href="https://arxiv.org/abs/2503.00540">arXiv</a> · <a href="https://proceedings.iclr.cc/paper_files/paper/2025/hash/67a9b444cbcd647572c88194619f72d5-Abstract-Conference.html">ICLR</a> · <a href="https://github.com/Becomebright/ReKV">代码</a></p>
+  <nav><a href="../../index.html">← 返回论文导航</a></nav>
+</div></header>
+<main><article>
+  <span class="tag">P1 · 长期 KV 回溯</span>
+  <h2>论文信息</h2>
+  <table><tr><th>研究问题</th><td>如何在视频持续输入、问题随时到达的情况下，避免反复编码历史帧，同时只把与问题相关的历史 KV 放回 GPU。</td></tr><tr><th>一句话</th><td>ReKV 将流式视频编码与问答解耦：历史视频先按滑动窗口编码为可外存的 KV，收到问题后只检索相关片段 KV 参与生成。</td></tr><tr><th>与 VLA 的关系</th><td>它提供了“事件段 KV 可长期保存、被任务 query 检索后再回载”的后端范式；关键事件检测可替代其固定帧/块粒度的历史组织。</td></tr></table>
+  <nav class="toc"><a href="#summary">摘要</a><a href="#motivation">动机</a><a href="#method">方法</a><a href="#exp">实验</a><a href="#limits">局限</a><a href="#end">总结</a></nav>
+
+  <h2 id="summary">1. 核心摘要</h2>
+  <p>传统 VideoQA 把完整视频与问题一起送入模型：既要等视频结束，也会在每个新问题到来时反复编码相同帧。ReKV 将任务改写为 StreamingVQA：时刻 <code>t</code> 只能使用已经观察到的视频前缀，却应能立刻回答新问题。方法在不额外训练 Video-LLM 的前提下，先连续生成历史 video KV-cache；对超长流，较早 KV 可以放至 RAM 或磁盘。</p>
+  <p>真正的关键是 query 到来后的 in-context retrieval。ReKV 不把全部历史 KV 回载到 GPU，而是在帧或帧块粒度以外部 CLIP-like 检索器、或 Video-LLM 内部 attention 表示计算相关性，只加载 Top-<code>r</code> 的 K/V，再与问题和生成 token 一起做 attention。论文报告在 LLaVA-OneVision-7B 上，RVS-Ego 的 streaming 准确率由均匀采样的 56.2 提升至内部检索的 63.7，同时问答延迟为 3.3 秒。</p>
+
+  <h2 id="motivation">2. 研究动机</h2>
+  <h3>StreamingVQA 不等于离线 VideoQA 的长上下文版本</h3>
+  <p>论文定义的视频流为 <code>Vᵀ=[v₁,…,vᵀ]</code>。问题 <code>q</code> 可以在任意 <code>t≤T</code> 抵达，回答只能依赖 <code>Vᵗ</code>。这与“先看完有限视频、后给一个问题”的离线设定不同：模型不能等待全部帧，也不能每次提问都重新从头 prefill。</p>
+  <h3>稀疏采帧与全量上下文都不够</h3>
+  <p>均匀采样会错过关键短时事件；全量帧则让 token、KV 和 attention 代价随流长度增长。即使已经把所有帧编码为 KV，若在回答每个问题时将所有 KV 回载，显存、数据传输和无关上下文干扰仍会成为瓶颈。因而作者同时处理两个阶段：流式编码时控制计算范围，问答时检索有限历史证据。</p>
+  <h3>对历史事件记忆的启示</h3>
+  <p>ReKV 的检索单位原本是帧或相邻帧块，未显式发现任务事件。对于 VLA，可将关键事件检测产生的事件段作为 KV 的持久化和检索单位：只有被确认的抓取、放置、状态切换等事件进入长期索引，避免把整个控制轨迹同等对待。</p>
+
+  <h2 id="method">3. 方法论</h2>
+  <img class="figure" src="figures/fig2-framework.png" alt="ReKV 的流式编码、KV 检索与问答流程图">
+  <p class="caption">原论文 Figure 2。上半部分以局部滑动窗口编码视频并将旧 KV 外存；下半部分用问题检索相关 KV，随后回载并生成答案。</p>
+  <h3>3.1 三段式整体流程</h3>
+  <p>图中 (a) 将视频分 chunk 输入 Video-LLM。当前 chunk 的 token 可以只注意最近的 local window，旧 video KV 仍被保留到外部存储；(b) 新问题到来时从历史中选出相关 K/V；(c) 这些 K/V 被载入 GPU，作为问题和自回归答案 token 的 attention context。视频分析与问答因此可被分开部署在不同进程或 GPU 上。</p>
+  <h3>3.2 滑动窗口视频编码：把在线计算限制在局部</h3>
+  <p>记历史 K/V 为 <code>P</code>，当前 chunk token 为 <code>X</code>，从 <code>P</code> 末尾截取长度为 <code>lL</code> 的局部 K/V 得 <code>L</code>。编码时使用 <code>Attn(WQX, [Lk, WKX], [Lv, WVX])</code>。这让新 chunk 的注意力只依赖近期窗口，降低流式 prefill 成本；但每个 chunk 生成的 video KV 不会立刻遗忘，而是供之后的问题检索。</p>
+  <h3>3.3 外部检索与内部检索</h3>
+  <p><b>外部检索</b>使用 CLIP-like 图像编码器将帧映射为 <code>v=fv(frame)</code>，文本编码器将问题映射为 <code>q=ft(question)</code>，以余弦相似度 <code>sim(v,q)=v·q/(τ||v||||q||)</code> 排序。为降低粒度，可把连续 <code>b</code> 帧平均成 block，再检索 Top-<code>⌈r/b⌉</code> 块。</p>
+  <p><b>内部检索</b>不引入外部编码器：每层把一帧的 key token 平均为帧向量，问题则由其 query token 平均得到问题向量，再做相似度检索。不同 self-attention 层可选出不同视频块，因此能保留层间语义差异；并且复用已经计算的模型内部表示，减少额外开销。</p>
+  <h3>3.4 回载 KV 后的回答与位置编码</h3>
+  <p>检索出的 <code>Rk,Rv</code> 直接作为回答阶段的 context：<code>Attn(WQX, [Rk, WKX], [Rv, WVX])</code>，其中 <code>X</code> 是问题或当前待生成 token。视频流编码沿用 LM-Infinite 的局部窗口与远距离 ceiling；回答阶段则把取回的视频 K/V 当作连续位置处理。论文比较了另一种静态位置方案，发现标准 RoPE 用于取回视频 token 的表现更好，作者将其归因于视频理解仍需要时间信息。</p>
+  <h3>3.5 VLA 迁移时应保留的边界</h3>
+  <p>ReKV 的 retrieval 发生在“问题到来后”，适合作为长程回溯路径，而非每个控制周期的热路径。VLA 可将当前控制窗口的 KV 常驻 GPU；已确认事件段的 KV、关键帧摘要及元数据放到 RAM/disk；当 instruction、失败恢复或高层规划需要历史证据时，再由语言和状态 query 取回相关段。</p>
+
+  <h2 id="exp">4. 实验与结果</h2>
+  <p><b>设置。</b>论文以 LLaVA-OneVision 0.5B/7B 为基础，测试离线长视频基准 MLVU、QaEgo4D、EgoSchema、ActivityNet-QA，以及流式 RVS-Ego、RVS-Movie。StreamingVQA 表同时报告准确率、开放回答 score、视频编码速度、从问题输入至生成结束的 latency、峰值 GPU 显存与每小时外存 KV 大小。</p>
+  <table><tr><th>同一 StreamingVQA 设置</th><th>均匀采样</th><th>外部检索</th><th>内部检索</th><th>结论</th></tr><tr><td>LLaVA-OV-7B，RVS-Ego Acc.</td><td>56.2</td><td>62.4</td><td>63.7</td><td>检索显著优于只采样历史帧。</td></tr><tr><td>LLaVA-OV-7B，RVS-Movie Acc.</td><td>43.0</td><td>53.6</td><td>54.4</td><td>内部表示检索在两个流式域中均更高。</td></tr><tr><td>LLaVA-OV-7B，问答 latency</td><td>2.9s</td><td>5.8s</td><td>3.3s</td><td>内部检索避免外部模型带来的额外时延。</td></tr><tr><td>LLaVA-OV-7B，峰值 GPU</td><td>21GB</td><td>55GB</td><td>38GB</td><td>准确率收益仍需以 KV 回载显存为代价。</td></tr></table>
+  <p>离线长视频上，LLaVA-OV-7B 加 ReKV 后在 MLVU dev Acc. 从 64.7 提升至 68.5，QaEgo4D test Acc. 从 52.8 提升至 56.0，ActivityNet-QA Acc. 从 56.6 提升至 60.4。消融层面，外部与内部 retrieval 的比较直接验证：当既有 Video-LLM 已有可用 attention 表示时，内部检索是更快的选择；但其每小时 KV 仍为 18.8GB，说明 ReKV 解决“GPU 常驻上下文”而非无损消除历史存储成本。</p>
+
+  <h2 id="limits">5. 优势与局限</h2>
+  <table><tr><th>优势</th><th>局限 / 迁移注意点</th></tr><tr><td><ul><li>训练无关，可叠加在既有 Video-LLM。</li><li>把连续视频编码与 query-time 问答解耦，适合多次历史追问。</li><li>内部检索允许不同层选不同历史片段，且不依赖额外参数。</li></ul></td><td><ul><li>保存的 KV 仍随视频长度线性增加，只是可从 GPU 转移至 RAM/disk。</li><li>帧/块检索未显式建模事件边界，可能把长交互切碎或遗漏短事件。</li><li>回答时的回载、检索和问题延迟不适合直接置于高频机器人控制环。</li><li>原始评测是 VideoQA，不证明检索 KV 就能改善操控成功率。</li></ul></td></tr></table>
+
+  <h2 id="end">6. 总结</h2>
+  <p>ReKV 将长视频历史由“必须常驻在当前上下文”改为“可外存、可检索、按需回载的 K/V 证据库”。滑动窗口保证流式编码不会随历史长度无限扩张，query-aware retrieval 则使问题只接触少量相关历史。它对 VLA 的最大价值是提供长期回溯的数据面。</p>
+  <p>若将 KEMO/关键事件检测负责“什么值得写”，ReKV 可以负责“写下的 KV 如何被高层 query 找回”。更完整的系统需要再加入事件级索引、状态/接触元数据和热路径/冷路径的时延预算，避免将所有历史检索都放进动作控制循环。</p>
+</article></main>
+</body></html>

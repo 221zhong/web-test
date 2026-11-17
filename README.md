@@ -24,6 +24,19 @@ P2 评测基准精读：[Ego4D Episodic Memory](https://221zhong.github.io/web-t
 | KEMO | [打开网页](https://221zhong.github.io/web-test/papers/kemo/) | 事件驱动关键帧写入与 VLA memory 融合 |
 | StreamMem | [打开网页](https://221zhong.github.io/web-test/papers/streammem/) | query-agnostic 的固定容量流式 KV memory |
 
+### 流式 KV Cache 深度拓展
+
+| 工作 | 在线精读页面 | 关注点 |
+| --- | --- | --- |
+| HERMES | [打开网页](https://221zhong.github.io/web-test/papers/hermes/) | 将 KV cache 组织为浅层细节、深层摘要的分层记忆 |
+| OxyGen | [打开网页](https://221zhong.github.io/web-test/papers/oxygen/) | VLA 多任务的跨任务 KV 共享与跨帧连续调度 |
+| ReKV | [打开网页](https://221zhong.github.io/web-test/papers/rekv/) | 视频 KV 的外部存储、query 检索与回载 |
+| LiveVLM | [打开网页](https://221zhong.github.io/web-test/papers/livevlm/) | 在线视频的短期 / 长期 KV 与即时问答 |
+| InfiniPot-V | [打开网页](https://221zhong.github.io/web-test/papers/infinipot-v/) | 时间冗余与 value 显著性驱动的固定 KV 预算 |
+| StreamKV | [打开网页](https://221zhong.github.io/web-test/papers/streamkv/) | 语义事件段的 KV 摘要、检索与分层压缩 |
+| Video-MemComp | [打开网页](https://221zhong.github.io/web-test/papers/video-memcomp/) | Taylor 敏感度和逐层动态 KV 预算 |
+| VidKV | [打开网页](https://221zhong.github.io/web-test/papers/vidkv/) | Video LLM 的超低比特 Key / Value KV 量化 |
+
 ## 内容与图像原则
 
 - 每篇按“论文信息 → 核心摘要 → 研究动机 → 方法论 → 实验与结果 → 优势与局限 → 总结”组织，实验部分只使用关键数值和文字。
