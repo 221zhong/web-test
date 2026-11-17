@@ -71,8 +71,10 @@
 </table>
 
 <h2 id="method">4. 方法拆解</h2>
-<img class="figure" src="figures/pipeline.svg" alt="OAT 管线示意图：滑动特征窗口经 encoder 得到队列表示，K 个可学习 anchor query 经 decoder 输出分类与边界，帧内 NMS 与 OSN 两级抑制后注册实例">
-<p class="caption">管线示意（<b>本站依据论文第 3–4 节正文重绘</b>，非原图）：窗口右端恒等于当前时刻 → encoder ×3 → K 个 anchor（终点固定在当前帧、只按长度区分）经 decoder ×5 解码 → 分类头与边界头 → 帧内 NMS → OSN 跨帧提交门控 → Ψ 已提交实例。ECCV 正式版只有 PDF 排版图，无 arXiv 源码可提取，故不嵌入裁图。</p>
+<img class="figure" src="figures/fig2_pipeline.png" alt="OAT 原论文 Fig. 2：视频流当前帧之前的特征进入 Input Feature Queue，经 Transformer Encoder 与 Decoder 配合 K 个 anchor 得到 Proposals，帧内 NMS 后由 Online Suppression Network 依据 Proposal history 决定是否抑制该帧">
+<p class="caption"><b>原图</b>：论文 PDF 第 5 页 Fig. 2，按图区域裁切（图注不并入图内）。灰色 <code>Unavailable</code> 段是尚未到达的未来帧，窗口右端恒等于当前帧；<code>K</code> 个 anchor 各出一条 proposal，帧内 NMS 后进入 OSN，由 proposal history 判定该帧是否被抑制。</p>
+<img class="figure" src="figures/pipeline.svg" alt="OAT 管线重绘：滑动特征窗口经 encoder 得到队列表示，K 个可学习 anchor query 经 decoder 输出分类与边界，帧内 NMS 与 OSN 两级抑制后注册实例">
+<p class="caption"><b>本站重绘</b>：把原图展开成可对照实现的顺序，并补出三处延迟来源（上下文不足、OSN 主动推迟、特征编码开销）。</p>
 <h3>4.1 输入与时间表征</h3>
 <p>每 <code>k</code> 个连续原始帧经预训练特征编码器压成一个特征向量，按时间串行进入长度 <code>Lq</code> 的队列，未填满处补零。每个新特征到达时窗口前移一格，步长就是一个特征步，窗口右端恒等于当前时刻。THUMOS'14 上 <code>Lq=64</code>，按论文报告的 5 fps 折算约 12.8 秒（配置推算）；MUSES 用 <code>Lq=150</code>，BBDB 用 <code>Lq=32</code>。</p>
 <p>队列经线性投影到 <code>D=1024</code> 维、加正弦位置编码，再过 3 个 8 头 encoder block 得到队列级表示 <code>E</code>。</p>
@@ -122,7 +124,7 @@
 </ul>
 <div class="srcbox">
 <p><b>来源：</b>Young Hwi Kim, Hyolim Kang, Seon Joo Kim, "A Sliding Window Scheme for Online Temporal Action Localization", ECCV 2022, ECVA 正式版 PDF（17 页，https://www.ecva.net/papers/eccv_2022/papers_ECCV/papers/136940640.pdf）；DOI https://doi.org/10.1007/978-3-031-19830-4_37。方法配置取自 3.5 至 3.6 节与第 4.3 节 Implementation Detail，数字取自 Table 1 至 Table 5。</p>
-<p><b>图像说明：</b>本页管线图为<b>本站重绘</b>（依据正文第 3–4 节，源文件 <code>figures/pipeline.svg</code>）；论文 Fig. 1 至 Fig. 3 仅存在于 PDF，按站点约定不从 PDF 裁图。OSN 的监督来自离线 NMS 的标签，这一细节在图中未展开，见 4.3 节正文。</p>
+<p><b>图像说明：</b>首图为作者原图 <b>Fig. 2</b>，取自 ECVA 正式版 PDF 第 5 页，按该图包围盒裁切（<code>figures/fig2_pipeline.png</code>，300 dpi），不含图注与正文；论文无 LaTeX 源码。第二张为<b>本站重绘</b>的管线速查图（<code>figures/pipeline.svg</code>）。OSN 的监督来自离线 NMS 的标签，这一细节在图中未展开，见 4.3 节正文。</p>
 </div>
 <p class="pagefoot">相关页面：<a href="../cag-qil/index.html">CAG-QIL · 逐帧分组的模仿学习路线</a> · <a href="../oadtr/index.html">OadTR · 流式 transformer 编码</a> · <a href="../matr/index.html">MATR · 在线动作检测</a> · <a href="../../index.html">返回总站</a></p>
 </article>

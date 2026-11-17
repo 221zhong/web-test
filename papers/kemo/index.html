@@ -65,7 +65,7 @@
 
 <h2 id="method">4. 方法拆解</h2>
 <img class="figure" src="figures/overview.png" alt="KEMO 总体框架：机器人状态与视觉观测进入关键帧检测模块，选中的帧存入记忆库，经记忆整合模块注入 VLA 主干后输出关节动作">
-<p class="caption">原论文总体框架图，取自作者 arXiv LaTeX 源码 <code>assets/overview.png</code>，非 PDF 裁图。主链路为 Robot States + Visual Obs. → Keyframe Detector（事件显著度、因果峰值、视觉去重）→ Keyframe Memory Bank → Memory Integration（检索、门控残差融合）→ VLA Backbone → 关节动作；语言指令直接进入主干。</p>
+<p class="caption">原论文总体框架图，取自作者 arXiv LaTeX 源码 <code>assets/overview.png</code>（源码原图，非重绘）。主链路为 Robot States + Visual Obs. → Keyframe Detector（事件显著度、因果峰值、视觉去重）→ Keyframe Memory Bank → Memory Integration（检索、门控残差融合）→ VLA Backbone → 关节动作；语言指令直接进入主干。</p>
 
 <h3>4.1 输入与时间表征</h3>
 <p>时刻 <code>t</code> 的观测为 <code>o_t = {I_t, s_t}</code>，<code>I_t</code> 含三路图像，<code>s_t</code> 为机器人状态；策略条件于语言 <code>ℓ</code> 与记忆 <code>M_t</code>，预测 <code>H = 50</code> 的 action chunk，动作为关节空间：<code>π_θ(a_{t:t+H} | o_t, ℓ, M_t)</code>。<code>M_t</code> 不是轨迹回放，而是截至 <code>t</code> 已接受关键帧的有序集合，编码「哪些阶段已完成」，与当前观测互补。论文不引入新时间戳输入，槽位自带可学习时间位置编码，表达「这是第几个被接受的阶段」，这与按固定间隔取帧有本质差别。</p>
@@ -139,7 +139,7 @@
 </ul>
 <div class="srcbox">
 <p><b>来源：</b>arXiv:2606.23589v1（2026-06-22 提交）<a href="https://arxiv.org/abs/2606.23589">abs 页</a>；<a href="https://hatty-z.github.io/KEMO/">作者项目主页</a>。正文第 3 节与附录 C、D 提供检测超参、训练配置与任务表，表 1–表 6 提供主结果与消融数值。</p>
-<p><b>图像说明：</b>三张图均为作者 arXiv LaTeX 源码原图（<code>assets/overview.png</code>、<code>assets/keyframe_detection.png</code>、<code>assets/keyframe_memory.png</code>），未做内容改动，非 PDF 裁图。</p>
+<p><b>图像说明：</b>三张图均为作者 arXiv LaTeX 源码原图（<code>assets/overview.png</code>、<code>assets/keyframe_detection.png</code>、<code>assets/keyframe_memory.png</code>），未做内容改动。</p>
 </div>
 <p class="pagefoot">相关页面：<a href="../hierarchical-event-memory/index.html">层级事件记忆 · 写入预算与合并</a> · <a href="../flowgebd/index.html">FlowGEBD · 边界检测</a> · <a href="../cag-qil/index.html">CAG-QIL · 因果事件记忆</a> · <a href="../../index.html">返回总站</a></p>
 </article>

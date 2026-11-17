@@ -76,8 +76,10 @@
 <p>换成强化学习后，瓶颈转到 reward 设计。Figure 4 的两条决策序列在逐帧 ±0.1 下累计奖励都是 0.6，可从分组角度看前者明显更好；给「连续正确」加权又会奖励长实例，对刻痕无效。作者的解法是让专家轨迹整体定义什么算好，而不是逐帧凑奖励项。</p>
 
 <h2 id="method">4. 方法拆解</h2>
-<img class="figure" src="figures/pipeline.svg" alt="CAG-QIL 管线示意图：视频特征经双流 TSN 编码后由两个 OAD 头给出 actionness 与类别分布，CAG agent 依据三条定长队列输出 0/1 提交判决，边沿翻转时提交实例">
-<p class="caption">管线示意（<b>本站依据论文第 3–4 节正文重绘</b>，非原图）：特征按 6 帧一块编码 → M1/M2 给出 α_t 与 p_t → agent 以 [α 队列, d 队列, p_t] 为状态输出 d_t → 0→1 记起点、1→0 提交实例 → 类别由 TSM 分类器 C 在已结束的 x_{s:e} 上给出。原论文该图为 PDF 排版（Figure 3），无 LaTeX 源码可提取，故不嵌入裁图。</p>
+<img class="figure" src="figures/fig3_overview.png" alt="CAG-QIL 原论文 Figure 3 总览图：视频块经 Feature Encoder E 编码，OAD model M1 与 M2 分别给出 actionness α 与类别分布 p，Context-Aware Agent 依据 q_d、q_a、p 输出提交判决 d_t，0 到 1 检测起点、1 到 0 检测终点并检索类别">
+<p class="caption"><b>原图</b>：论文 PDF 第 4 页 Figure 3，按图区域裁切（图注不并入图内）。原图以 k=3、3 类为例：每块（τ=1-3、4-6 …）经 <code>E</code> 编码，<code>M1</code> 给 <code>α_t</code>、<code>M2</code> 给 <code>p_t</code>；agent <code>Ψ</code> 读入 <code>q_d</code>、<code>q_a</code>、<code>p_t</code> 输出 <code>d_t</code>，0→1 记 <code>start_time</code>，1→0 记 <code>end_time</code> 并检索类别 <code>c</code>，最终实例为 <code>ψ=(4,10,"TennisSwing")</code>。</p>
+<img class="figure" src="figures/pipeline.svg" alt="CAG-QIL 管线重绘：视频特征经双流 TSN 编码后由两个 OAD 头给出 actionness 与类别分布，CAG agent 依据三条定长队列输出 0/1 提交判决，边沿翻转时提交实例">
+<p class="caption"><b>本站重绘</b>：把原图术语对到「候选生成 → 提交 → 记忆写入」的判据，标出块长 <code>k=6</code>、队列长度 <code>n</code> 与提交后不可回改的位置。</p>
 <h3>4.1 输入与时间表征</h3>
 <p>每 6 帧经双流 TSN（Kinetics 预训练）编码成一个特征，边界分辨率因此被 <code>k=6</code> 钉死，与回归头精度无关。第一阶段用交叉熵训练 <code>M1</code>（actionness <code>α_t</code>）与 <code>M2</code>（类别 <code>p_t</code>），两者都是一层 LSTM 加两层 FC；第二阶段冻结它们，预先算出全视频的 α、p 序列来构造专家库。类别由独立 TSM 分类器 <code>C</code> 在实例区间上给出。ActivityNet1.3 上特征序列被线性插值到 100 步，这需要整段视频长度，与严格在线存在张力。</p>
 
@@ -161,7 +163,7 @@
 </ul>
 <div class="srcbox">
 <p><b>来源：</b>Hyunjun Kang, Kyungmin Kim, Yumin Ko, Seon Joo Kim. CAG-QIL: Context-Aware Actionness Grouping via Q Imitation Learning for Online Temporal Action Localization. ICCV 2021, pp. 13729–13738. 开放版 PDF：<a href="https://openaccess.thecvf.com/content/ICCV2021/papers/Kang_CAG-QIL_Context-Aware_Actionness_Grouping_via_Q_Imitation_Learning_for_Online_ICCV_2021_paper.pdf">openaccess.thecvf.com</a>（2026-11-17 核对）。代码：<a href="https://github.com/musicalOffering/CAG-QIL">github.com/musicalOffering/CAG-QIL</a>。本页数字取自该 PDF 的 Table 1、2、3、4、5 与 5.4 节正文；论文未提供 arXiv 版本链接，故页首只列 CVF 论文页。</p>
-<p><b>图像说明：</b>本页管线图为<b>本站重绘</b>（依据正文第 3–4 节，源文件 <code>figures/pipeline.svg</code>）；作者未公开 LaTeX 源码，CVF 提供的是整页 PDF，按站点约定不从 PDF 裁图。原文 Figure 2（action tick 与 fragmentation）与 Figure 3（队列流程）可对照 PDF 第 3–4 页阅读。</p>
+<p><b>图像说明：</b>首图为作者原图 <b>Figure 3</b>，取自 CVF 正式版 PDF 第 4 页，按该图包围盒裁切（<code>figures/fig3_overview.png</code>，300 dpi），不含图注、正文、页眉页脚；作者未公开 LaTeX 源码。第二张为<b>本站重绘</b>的管线速查图（<code>figures/pipeline.svg</code>），标出块长与提交后不可回改的位置。Figure 2（action tick 与 fragmentation）见 PDF 第 3 页。</p>
 </div>
 <p class="pagefoot">相关页面：<a href="../ddm-net/index.html">DDM-Net</a> · <a href="../hierarchical-event-memory/index.html">Hierarchical Event Memory</a> · <a href="../kemo/index.html">KEMO</a> · <a href="../../index.html">返回总站</a></p>
 </article>
