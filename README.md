@@ -8,20 +8,20 @@
 
 专题总览：[历史关键事件检测专题](https://221zhong.github.io/web-test/papers/)。
 
-| 优先级 | 工作 | 在线精读页面 | 关注点 |
-| --- | --- | --- | --- |
-| P0 | DDM-Net | [打开网页](https://221zhong.github.io/web-test/papers/ddm-net/) | 以 motion 与 appearance 的多层差分确认通用事件边界 |
-| P0 | FlowGEBD | [打开网页](https://221zhong.github.io/web-test/papers/flowgebd/) | 以稀疏轨迹和 flow normalization 低成本生成因果边界候选 |
-| P0 | CAG-QIL | [打开网页](https://221zhong.github.io/web-test/papers/cag-qil/) | 在线 proposal 的 pending / active / committed 提交决策 |
-| P0 | Hierarchical Event Memory | [打开网页](https://221zhong.github.io/web-test/papers/hierarchical-event-memory/) | 多尺度事件 proposal memory 与近期细、远期粗的长期维护 |
-| P0 | KEMO | [打开网页](https://221zhong.github.io/web-test/papers/kemo/) | 机器人运动显著性、因果峰值与视觉去重驱动的关键帧写入 |
-| P1 | Motion-Aware Self-Supervision | [打开网页](https://221zhong.github.io/web-test/papers/motion-aware-ssl/) | 以可微 motion module 学习对边界敏感的自监督表征 |
-| P1 | OadTR | [打开网页](https://221zhong.github.io/web-test/papers/oadtr/) | 用历史 Transformer 与训练期未来表征预测识别当前动作 phase |
-| P1 | OAT | [打开网页](https://221zhong.github.io/web-test/papers/oat/) | 多尺度 anchor proposal 与不可回改的在线实例定位 |
-| P1 | MATR | [打开网页](https://221zhong.github.io/web-test/papers/matr/) | 选择性历史队列，以及先终点、后起点的实例解码 |
-| P1 | HAT | [打开网页](https://221zhong.github.io/web-test/papers/hat/) | 以未来监督历史模块增强程序性第一视角动作定位 |
-| P1 | Event-VStream | [打开网页](https://221zhong.github.io/web-test/papers/event-vstream/) | motion、语义与预测线索共同触发事件写入和持久记忆更新 |
-| P2 | Ego4D Episodic Memory | [打开网页](https://221zhong.github.io/web-test/papers/ego4d-episodic-memory/) | 用 NLQ、VQ、MQ 验证历史事件能否被语言、对象和活动查询找回 |
+| 优先级 | 工作 | 发表处与时间 | 在线精读页面 | 关注点 |
+| --- | --- | --- | --- | --- |
+| P0 | DDM-Net | CVPR 2022 | [打开网页](https://221zhong.github.io/web-test/papers/ddm-net/) | 以 motion 与 appearance 的多层差分确认通用事件边界 |
+| P0 | FlowGEBD | WACV 2024 | [打开网页](https://221zhong.github.io/web-test/papers/flowgebd/) | 以稀疏轨迹和 flow normalization 低成本生成因果边界候选 |
+| P0 | CAG-QIL | ICCV 2021 | [打开网页](https://221zhong.github.io/web-test/papers/cag-qil/) | 在线 proposal 的 pending / active / committed 提交决策 |
+| P0 | Hierarchical Event Memory | ICCV 2025 | [打开网页](https://221zhong.github.io/web-test/papers/hierarchical-event-memory/) | 多尺度事件 proposal memory 与近期细、远期粗的长期维护 |
+| P0 | KEMO | arXiv 2026 | [打开网页](https://221zhong.github.io/web-test/papers/kemo/) | 机器人运动显著性、因果峰值与视觉去重驱动的关键帧写入 |
+| P1 | Motion-Aware Self-Supervision | WACV 2023 | [打开网页](https://221zhong.github.io/web-test/papers/motion-aware-ssl/) | 以可微 motion module 学习对边界敏感的自监督表征 |
+| P1 | OadTR | ICCV 2021 | [打开网页](https://221zhong.github.io/web-test/papers/oadtr/) | 用历史 Transformer 与训练期未来表征预测识别当前动作 phase |
+| P1 | OAT | ECCV 2022 | [打开网页](https://221zhong.github.io/web-test/papers/oat/) | 多尺度 anchor proposal 与不可回改的在线实例定位 |
+| P1 | MATR | ECCV 2024 | [打开网页](https://221zhong.github.io/web-test/papers/matr/) | 选择性历史队列，以及先终点、后起点的实例解码 |
+| P1 | HAT | ECCV 2024 | [打开网页](https://221zhong.github.io/web-test/papers/hat/) | 以未来监督历史模块增强程序性第一视角动作定位 |
+| P1 | Event-VStream | arXiv 2026 | [打开网页](https://221zhong.github.io/web-test/papers/event-vstream/) | motion、语义与预测线索共同触发事件写入和持久记忆更新 |
+| P2 | Ego4D Episodic Memory | CVPR 2022 | [打开网页](https://221zhong.github.io/web-test/papers/ego4d-episodic-memory/) | 用 NLQ、VQ、MQ 验证历史事件能否被语言、对象和活动查询找回 |
 
 ## 专题二：KV Cache 与事件记忆
 
