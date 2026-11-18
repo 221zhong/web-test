@@ -5,6 +5,14 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Gated VLA-Cache｜专题二 · KV Cache 与事件记忆</title>
 <link rel="stylesheet" href="../../style.css">
+<script>
+window.MathJax = {
+  tex: { inlineMath: [['\\(', '\\)']], displayMath: [['\\[', '\\]']], processEscapes: true },
+  options: { skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code'] },
+  chtml: { displayAlign: 'center' }
+};
+</script>
+<script defer src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
 </head>
 <body>
 <header>
@@ -37,7 +45,7 @@
 <p>用一个几乎零成本的解码期信号（动作 token 的 top-1/top-2 概率差）当作「模型自己有多确定」的代理，不确定就把整份 KV 作废、全量重算。拿到的是：在缓存本来会拖后腿的任务上把失分收回来，且不需要训练。付出的是失效步的算力尖峰与一个必须按模型标定的阈值。</p>
 <dl>
 <dt>最小可复用件</dt>
-<dd>「margin 计算 + 布尔门控」不到 20 行：读完上一步动作 logits 算 <code>mean(p1−p2)</code>，低于阈值就跳过缓存路径。可直接套在 VLA-Cache 或任何「上一帧 KV 复用」实现外面。</dd>
+<dd>「margin 计算 + 布尔门控」不到 20 行：读完上一步动作 logits 算 \(\text{mean}(p_1-p_2)\)，低于阈值就跳过缓存路径。可直接套在 VLA-Cache 或任何「上一帧 KV 复用」实现外面。</dd>
 <dt>主要风险</dt>
 <dd>margin 与输出校准绑定，换 checkpoint 要重标阈值；门控抖动会让逐步算力与延迟二值跳变；flow / diffusion 动作头没有 logit，方法原则上不适用。</dd>
 <dt>复现门槛</dt>
@@ -47,7 +55,7 @@
 
 <h2 id="summary">1 核心摘要</h2>
 <p><b>问题。</b>VLA-Cache 这类跨控制步复用，判断「哪些视觉 token 的 K/V 能沿用」时只看观测空间：patch 余弦相似度、text-to-vision 注意力、层注意力熵。三者回答的都是「输入看起来变了没有」，不是「模型还拿不拿得准」。画面几乎不动、任务却进入关键决策（抓取对准、子任务切换）时，陈旧表征会被喂进自回归解码，错误沿时间累积。</p>
-<p><b>做法。</b>作者在 VLA-Cache 外面加了一个标量门控。第 <code>t−1</code> 步解码出 <code>D</code> 个动作 token，每个动作维都有一份覆盖全词表的 softmax；取最高与次高概率之差、对 <code>D</code> 维求均值得到 margin <code>m<sub>t−1</sub></code>。第 <code>t</code> 步前与阈值 <code>θ<sub>m</sub></code> 比较：低于阈值就作废<b>整份</b> KV cache，对 <code>N+|ℓ|</code> 个 token 全量前向；高于阈值照常走三段复用。阈值按架构标定一次——OpenVLA 取 <code>0.65</code>，OpenVLA-OFT 取 <code>0.50</code>，在 LIBERO-Spatial 上粗网格搜出后跨四个 suite 固定。</p>
+<p><b>做法。</b>作者在 VLA-Cache 外面加了一个标量门控。第 \(t-1\) 步解码出 \(D\) 个动作 token，每个动作维都有一份覆盖全词表的 softmax；取最高与次高概率之差、对 \(D\) 维求均值得到 margin \(m_{t-1}\)。第 \(t\) 步前与阈值 \(\theta_m\) 比较：低于阈值就作废<b>整份</b> KV cache，对 \(N+|\ell|\) 个 token 全量前向；高于阈值照常走三段复用。阈值按架构标定一次——OpenVLA 取 0.65，OpenVLA-OFT 取 0.50，在 LIBERO-Spatial 上粗网格搜出后跨四个 suite 固定。</p>
 <p><b>判定。</b>机制里没有新组件，价值在选对了信号：margin 只在两个候选动作真的互相竞争时塌下去，长尾词表噪声与 attention sink 都污染不到它。代价是失效整帧全量、粒度最粗，信号来自上一步，天然滞后一个控制周期。一句话：选择器一个字节都没改，只在它前面加了一个开关。</p>
 
 <h2 id="stage">2 复用机制定位</h2>
@@ -55,35 +63,39 @@
 <p>它命中的是<b>失效判定</b>：不改「谁可以复用」，只改「这一帧还允不允许复用」。判定失效即退化为全量前向，缓存粒度与层级预算都不动，门控关闭时完全继承 VLA-Cache 的策略，所以是部分命中。</p>
 <table>
 <tr><th>维度</th><th>Gated VLA-Cache 的做法</th></tr>
-<tr><td>判定信号</td><td>上一步动作解码的 top-1/top-2 概率 margin 在 <code>D</code> 个动作维上的均值，与 <code>θ<sub>m</sub></code> 比较。信号在输出端，不在图像端。</td></tr>
-<tr><td>复用单位</td><td>不变：视觉 patch token 的 K/V（<code>p=14</code>，<code>N=256</code> 对应 224×224）。门控只输出布尔量，不挑 token。</td></tr>
-<tr><td>失效与重算</td><td>整体失效：清空整份 cache，<code>N+|ℓ|</code> 全量前向，重建所有层、所有 token 的 K/V。无局部失效变体。</td></tr>
+<tr><td>判定信号</td><td>上一步动作解码的 top-1/top-2 概率 margin 在 \(D\) 个动作维上的均值，与 \(\theta_m\) 比较。信号在输出端，不在图像端。</td></tr>
+<tr><td>复用单位</td><td>不变：视觉 patch token 的 K/V（\(p=14\)，\(N=256\) 对应 224×224）。门控只输出布尔量，不挑 token。</td></tr>
+<tr><td>失效与重算</td><td>整体失效：清空整份 cache，\(N+|\ell|\) 全量前向，重建所有层、所有 token 的 K/V。无局部失效变体。</td></tr>
 <tr><td>层级预算</td><td>关闭时沿用 VLA-Cache 的每层复用比例；门控本身不含层信息。</td></tr>
-<tr><td>在线性</td><td>因果，只用第 <code>t−1</code> 步已解码的 logits；不增前向、参数、显存，不需训练。但每步算力二值，延迟双峰。</td></tr>
+<tr><td>在线性</td><td>因果，只用第 \(t-1\) 步已解码的 logits；不增前向、参数、显存，不需训练。但每步算力二值，延迟双峰。</td></tr>
 </table>
 <p>margin 是<b>解码之后</b>才有的量，决策却在下一次 prefill 之前——只能事后评判，不能事前预测。</p>
 
 <h2 id="problem">3 问题与动机</h2>
-<p>三段判定共享一个前提：视觉变化程度可以代理「模型此刻需不需要新信息」。抓取对准时，夹爪与物体的相对位姿变化可能只落在几十个像素上，整图相似度（<code>τ=0.996</code>）依然很高，而被判为静态的区域恰恰决定成败；text-to-vision 注意力是在混用陈旧 K/V 的上下文里算出来的，拿它给缓存做体检有自证嫌疑（本页分析）；层熵调的是「算多少」，不回答「该不该算」。作者的说法是：这些量测「看起来变了没有」，要问「模型还有没有把握」，二者在平稳帧上同向，关键帧上分叉。</p>
+<p>三段判定共享一个前提：视觉变化程度可以代理「模型此刻需不需要新信息」。抓取对准时，夹爪与物体的相对位姿变化可能只落在几十个像素上，整图相似度（\(\tau=0.996\)）依然很高，而被判为静态的区域恰恰决定成败；text-to-vision 注意力是在混用陈旧 K/V 的上下文里算出来的，拿它给缓存做体检有自证嫌疑（本页分析）；层熵调的是「算多少」，不回答「该不该算」。作者的说法是：这些量测「看起来变了没有」，要问「模型还有没有把握」，二者在平稳帧上同向，关键帧上分叉。</p>
 <p>本文的假设是：缓存让模型失去判别力时，最先体现在 top-1 与 top-2 的概率差收窄，而不是画面差异。所以像素没变也该整帧重算。</p>
 <p>被否掉的替代信号也值得记：动作分布熵被 32,000 词表的长尾淹没；注意力熵被 attention sink 按住，几乎恒定；相邻步动作差有信号但语义错位，测的是「在做什么」而非「有多确定」。判据由此清晰：信号要落在决策瓶颈，不能被长尾或 sink 稀释。</p>
 
 <h2 id="method">4 方法拆解</h2>
 <h3>4.1 信号：margin 是什么、在哪一步取</h3>
-<p>第 <code>t−1</code> 步解码出动作 token 序列，每个动作维 <code>d</code> 都有一份覆盖全词表的 softmax，记最高与次高概率为 <code>p<sub>1</sub></code>、<code>p<sub>2</sub></code>：</p>
-<p><code>m<sub>t−1</sub> = (1/D) · Σ<sub>d=1..D</sub> [ p<sub>1</sub>(a<sup>d</sup><sub>t−1</sub>) − p<sub>2</sub>(a<sup>d</sup><sub>t−1</sub>) ]</code></p>
-<p>三点复现要点：取<b>全部动作维</b>求均值，不是只看首个 token（论文未给 <code>D</code> 的具体取值）；取<b>概率差而非 logit 差</b>，先 softmax 再减，值域 <code>[0,1]</code>，<code>0.65</code> 才等于「首选比次选高 65 个百分点」；取<b>上一步</b>，原文承认 one-step reactive lag。</p>
+<p>第 \(t-1\) 步解码出动作 token 序列，每个动作维 \(d\) 都有一份覆盖全词表的 softmax，记最高与次高概率为 \(p_1\)、\(p_2\)：</p>
+<p>\[ m_{t-1} = \frac{1}{D}\sum_{d=1}^{D}\left[\,p_1(a_{t-1}^{d})-p_2(a_{t-1}^{d})\,\right] \]</p>
+<p>三点复现要点：取<b>全部动作维</b>求均值，不是只看首个 token（论文未给 \(D\) 的具体取值）；取<b>概率差而非 logit 差</b>，先 softmax 再减，值域 \([0,1]\)，0.65 才等于「首选比次选高 65 个百分点」；取<b>上一步</b>，原文承认 one-step reactive lag。</p>
 <img class="figure" src="figures/fig2-gate-architecture.png" alt="Gated VLA-Cache 架构图：VLA-Cache 三段流水线外加 logit margin 门控">
-<p class="caption">Figure 2：VLA-Cache 的三段复用流水线（Static Patch Detection → Task Related Token → Entropy-Adaptive Layer）与新增的 Neural Introspection Gate，门控比较 margin 与 <code>θ<sub>m</sub></code> 后选择 Cache Reuse 或 Full Compute。</p>
+<p class="caption">Figure 2：VLA-Cache 的三段复用流水线（Static Patch Detection → Task Related Token → Entropy-Adaptive Layer）与新增的 Neural Introspection Gate，门控比较 margin 与 \(\theta_m\) 后选择 Cache Reuse 或 Full Compute。</p>
 <h3>4.2 门控开关与整帧失效</h3>
 <div class="quote">
-<code>m ← mean(p1 − p2) over D dims   # 复用上一步解码的 logits</code><br>
-<code>if m &lt; θm:</code><br>
-<code>    invalidate entire KV cache; full forward over N + |ℓ|</code><br>
-<code>else:</code><br>
-<code>    static patch → task-relevant filter → layer-wise reuse</code><br>
-<code>    partial forward over non-cached tokens</code><br>
-<code>decode a_t; return a_t, cache</code>
+<p>\[
+\begin{aligned}
+&m \leftarrow \text{mean}(p_1-p_2)\ \text{over}\ D\ \text{dims}\qquad \#\ \text{复用上一步解码的 logits}\\
+&\text{if } m &lt; \theta_m\text{:}\\
+&\quad \text{invalidate entire KV cache; full forward over } N+|\ell|\\
+&\text{else:}\\
+&\quad \text{static patch} \rightarrow \text{task-relevant filter} \rightarrow \text{layer-wise reuse}\\
+&\quad \text{partial forward over non-cached tokens}\\
+&\text{decode } a_t;\ \text{return } a_t,\ \text{cache}
+\end{aligned}
+\]</p>
 </div>
 <p>失效粒度是<b>整帧全量</b>：不挑 patch、不挑层，也不回滚到更早的缓存。好处是干净——它不会比不复用更差，最坏只是白算一次，作者原话是「失效总是安全的，只是偶尔浪费」。代价是算力只有两档，延迟呈双峰。</p>
 <h3>4.3 阈值与免训练</h3>
@@ -97,7 +109,7 @@
 <tr><td>基准</td><td>LIBERO 四个 suite，每 suite 10 任务 × 50 episodes</td></tr>
 <tr><td>指标</td><td>成功率 SR；TFLOPs/step（未报延迟与显存）</td></tr>
 <tr><td>硬件</td><td>单张 A100，全部仿真</td></tr>
-<tr><td>对照</td><td>Full Inference；VLA-Cache（<code>τ=0.996</code>、<code>top-k=120</code>），同环境自测</td></tr>
+<tr><td>对照</td><td>Full Inference；VLA-Cache（\(\tau=0.996\)、<code>top-k=120</code>），同环境自测</td></tr>
 <tr><td>每步算力</td><td>缓存路径 1.43 或全量路径 1.87 TFLOPs，两档、无中间态</td></tr>
 </table>
 <div class="wide">
@@ -118,14 +130,14 @@
 </table>
 </div>
 <p class="notice"><b>读表提醒：</b>这里的 Full 70.1% 是本文在 A100 上的同环境自测值，VLA-Cache 原文自报的 LIBERO 平均是 75.0%（RTX 4090 测得），两者评测协议是否一致论文未交代，<b>不要跨页面横比</b>；表内三个数字同环境，可以比。TFLOPs 也不等同于其原文的 CUDA latency。</p>
-<p><b>Goal 与 Long 是主论据。</b>VLA-Cache 在 Goal 掉 3.2 点（77.2→74.0），门控后 77.4；Long 掉 3.8 点（54.0→50.2），门控后 54.8，比全量还高 0.8，作者归因于「选择性复用的时间平滑」，属推测、无分离实验。所谓「回收超过 100%」是相对表内 VLA-Cache 的损失算的：Goal 106%（<code>(77.4−74.0)/(77.2−74.0)</code>），Long 121%，分子含「超过 Full」的部分才会大于 100%。但两个分母只有 3 个多点，500 episodes 的粒度是 0.2 点，超出部分落在噪声量级，不宜当成「超过全量推理」的结论。</p>
+<p><b>Goal 与 Long 是主论据。</b>VLA-Cache 在 Goal 掉 3.2 点（77.2→74.0），门控后 77.4；Long 掉 3.8 点（54.0→50.2），门控后 54.8，比全量还高 0.8，作者归因于「选择性复用的时间平滑」，属推测、无分离实验。所谓「回收超过 100%」是相对表内 VLA-Cache 的损失算的：Goal 106%（\(\frac{77.4-74.0}{77.2-74.0}\)），Long 121%，分子含「超过 Full」的部分才会大于 100%。但两个分母只有 3 个多点，500 episodes 的粒度是 0.2 点，超出部分落在噪声量级，不宜当成「超过全量推理」的结论。</p>
 <p><b>Object 是明确反例。</b>该 suite 上缓存只掉 1.0 点，门控后 67.8 反而低于两个基线，作者归因于多余的失效打断了短时程任务的时间平滑。门控不是单调增益：缓存本来就安全的地方，它是纯成本。</p>
 <p><b>OFT 上门控基本沉默。</b>VLA-Cache 任一 suite 最多掉 0.4 点，三者平均 95.7 / 95.8 / 95.8，门控只多花 0.06 TFLOPs——margin 一直很高，几乎不触发。换句话说，全文的正面结论主要建立在较老的 OpenVLA 上。</p>
 <p><b>触发率。</b>LIBERO-Long 平均约 <b>24%</b> 的步骤触发失效，简单任务低于 <b>10%</b>，且集中在抓取对准与子任务切换。</p>
 <img class="figure" src="figures/fig5-gating-trace.png" alt="LIBERO-Long 单 episode 的 logit margin 曲线与门控触发区间">
 <p class="caption">Figure 5：LIBERO-Long 单 episode 的 top-1/top-2 logit margin 曲线，粉色区间为门控触发、缓存失效后全量重算的时段，红色虚线按 Approach / Grasp / Lift 切分两个抓放周期。</p>
-<p><b>阈值敏感性。</b><code>θ<sub>m</sub></code> 在 0.55–0.75（OpenVLA）与 0.40–0.60（OFT）之间扫，成功率分别落在 78.2%–79.4% 与 93.2%–94.0%。两端各有出口：阈值趋 0 退化为 VLA-Cache，过高则频繁失效、打断时间平滑。</p>
-<p><b>代价口径。</b>平均 69.9% @ 1.53 TFLOPs，比全量低 0.2 点、省 18% 算力；相对 VLA-Cache 多花 0.10 TFLOPs 换回 1.8 点。摘要说的「80% 计算节省」按 <code>(1.87−1.53)/(1.87−1.43)</code> 算<b>实为 77%</b>。未报告：延迟分布、显存、控制频率、真实机器人、失败案例。</p>
+<p><b>阈值敏感性。</b>\(\theta_m\) 在 0.55–0.75（OpenVLA）与 0.40–0.60（OFT）之间扫，成功率分别落在 78.2%–79.4% 与 93.2%–94.0%。两端各有出口：阈值趋 0 退化为 VLA-Cache，过高则频繁失效、打断时间平滑。</p>
+<p><b>代价口径。</b>平均 69.9% @ 1.53 TFLOPs，比全量低 0.2 点、省 18% 算力；相对 VLA-Cache 多花 0.10 TFLOPs 换回 1.8 点。摘要说的「80% 计算节省」按 \((1.87-1.53)/(1.87-1.43)\) 算<b>实为 77%</b>。未报告：延迟分布、显存、控制频率、真实机器人、失败案例。</p>
 
 <h2 id="fit">6 优点、局限与 VLA 适配</h2>
 <div class="duo">
@@ -139,18 +151,18 @@
 <h4>不成立的前提</h4>
 <p><b>1. 动作必须被离散成 token。</b>flow / diffusion 动作头（π0、SmolVLA 一类）没有这份 softmax，原则上不适用；论文只测了两种自回归架构，却把结论写成「可接入任何自回归 VLA 推理栈」。</p>
 <p><b>2. 高 margin 等于缓存可信。</b>margin 只反映输出分布有多尖，不反映 K/V 是否陈旧——「自信地错」同样不触发；作者承认无法区分缓存不确定与固有模糊，但未给误判率。</p>
-<p><b>3. 模糊性在相邻步持续。</b>用 <code>t−1</code> 的 margin 决定 <code>t</code> 的缓存，10–20 Hz 下通常成立，但抓住、碰撞这类快速相位切换会漏拍；阈值附近的抖动还会让动作在「平滑版」与「新鲜版」之间跳，闭环效应未评估。</p>
+<p><b>3. 模糊性在相邻步持续。</b>用 \(t-1\) 的 margin 决定 \(t\) 的缓存，10–20 Hz 下通常成立，但抓住、碰撞这类快速相位切换会漏拍；阈值附近的抖动还会让动作在「平滑版」与「新鲜版」之间跳，闭环效应未评估。</p>
 </div>
 </div>
 <h3>6.1 延迟：双峰而不是斜坡</h3>
 <p>单步算力只有两档，论文只给平均 TFLOPs。最坏情况是连续多步 margin 都低于阈值（模棱两可的接触阶段），系统连续走全量，节省归零且抖动最大。所以要把触发率当一等指标，而不只看平均 TFLOPs。</p>
 <h3>6.2 最小改造方案</h3>
-<p>本页建议的最小改造（属本页分析，论文未实现）：(1) 解码后缓存 <code>m</code> 与触发标志，下一步 prefill 前读取，不动模型；(2) 加迟滞与冷却——进入用 <code>θ<sub>low</sub></code>、退出用 <code>θ<sub>high</sub></code>，触发后 <code>k</code> 步内不再触发，把二值抖变压成有界频率；(3) 对没有 logits 的 flow head，用多次采样速度场的分歧度作替代信号——同构思路，未经验证。</p>
+<p>本页建议的最小改造（属本页分析，论文未实现）：(1) 解码后缓存 \(m\) 与触发标志，下一步 prefill 前读取，不动模型；(2) 加迟滞与冷却——进入用 \(\theta_{\text{low}}\)、退出用 \(\theta_{\text{high}}\)，触发后 \(k\) 步内不再触发，把二值抖变压成有界频率；(3) 对没有 logits 的 flow head，用多次采样速度场的分歧度作替代信号——同构思路，未经验证。</p>
 
 <h2 id="repro">7 落地清单</h2>
 <ul class="checklist">
-<li><b>打通 logits 出口。</b>在动作解码处取每个动作维的 top-2 softmax 概率，算 <code>mean(p1−p2)</code> 并落盘为逐 step 标量。验收：不改权重、不增前向、不增显存。</li>
-<li><b>标定 <code>θ<sub>m</sub></code>。</b>目标模型 + 一个中等难度 suite 跑 50–100 episodes 粗网格（OpenVLA 参考 0.55–0.75，OFT 参考 0.40–0.60），取平台中点而非峰值。验收：阈值 ±0.05 内成功率波动小于 1 个点。</li>
+<li><b>打通 logits 出口。</b>在动作解码处取每个动作维的 top-2 softmax 概率，算 \(\text{mean}(p_1-p_2)\) 并落盘为逐 step 标量。验收：不改权重、不增前向、不增显存。</li>
+<li><b>标定 \(\theta_m\)。</b>目标模型 + 一个中等难度 suite 跑 50–100 episodes 粗网格（OpenVLA 参考 0.55–0.75，OFT 参考 0.40–0.60），取平台中点而非峰值。验收：阈值 ±0.05 内成功率波动小于 1 个点。</li>
 <li><b>把触发率当一等指标。</b>分简单/困难任务统计触发率（参考 &lt;10% 与 ~24%），并记录触发步、非触发步各自的 p50/p99 步时。验收：p99 不超过控制周期的 1.2 倍，否则加冷却步数。</li>
 <li><b>门控粒度先做整帧。</b>别做「只重算高熵层」这类局部失效——论文没有该变体，也没有消融。</li>
 <li><b>双指标验收并盯反例。</b>目标是回收 ≥80% 的精度损失、同时保留 ≥70% 的计算节省，两者必须同环境自测。上线前确认任务分布更接近 Goal/Long 还是 Object——短时程、缓存本就安全的任务上门控是纯成本（原文 Object −1.6）。</li>

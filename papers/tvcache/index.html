@@ -5,6 +5,14 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>TVCache｜专题二 · KV Cache 与事件记忆</title>
 <link rel="stylesheet" href="../../style.css">
+<script>
+window.MathJax = {
+  tex: { inlineMath: [['\\(', '\\)']], displayMath: [['\\[', '\\]']], processEscapes: true },
+  options: { skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code'] },
+  chtml: { displayAlign: 'center' }
+};
+</script>
+<script defer src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
 </head>
 <body>
 <header>
@@ -35,22 +43,22 @@
 <div class="vt">决策卡</div>
 <p>两个免训练统计量可直接抄：head 打分（注意力强度减熵）与选层（逐层熵加最小层距）。代价是每步 2.84–2.89 ms 固定开销，OpenVLA-OFT 12.5% 下把 VLA-Cache 的 69.50% 拉到 84.00%；但 +14.50 pp 里 12.70 来自选层，head 过滤只贡献 1.40。</p>
 <dl>
-<dt>最小可复用件</dt><dd>head 分数 <code>S_head(n) = α·I_l^(n) − β·H_l^(n)</code>（α=β=0.5）与层稳定性 <code>R^(l) = 1 − Ē^(l)</code> 加 <code>K=4, d_min=2</code> 的间隔贪心选层。两者只读现成注意力矩阵，不训练、不改权重。</dd>
-<dt>主要风险</dt><dd><code>τ</code>、<code>τ_task</code>、<code>|M_l|</code> 三个超参论文未给出，head 过滤这一半无法照抄；<code>α=β=0.5</code> 用在量级差两个数量级的两个量上（<code>I∈[0,1]</code>，<code>H</code> 上界 <code>log L_v</code>），实际排序接近「只按集中度挑 head」。全文没有缓存失效或置信度门控，指令切换时该不该整体作废，论文没答。</dd>
+<dt>最小可复用件</dt><dd>head 分数 \(S_{\text{head}}(n) = \alpha I_l^{(n)} - \beta H_l^{(n)}\)（\(\alpha=\beta=0.5\)）与层稳定性 \(R^{(l)} = 1 - \bar{E}^{(l)}\) 加 \(K=4,\ d_{\min}=2\) 的间隔贪心选层。两者只读现成注意力矩阵，不训练、不改权重。</dd>
+<dt>主要风险</dt><dd>\(\tau\)、\(\tau_{\text{task}}\)、\(|M_l|\) 三个超参论文未给出，head 过滤这一半无法照抄；\(\alpha=\beta=0.5\) 用在量级差两个数量级的两个量上（\(I\in[0,1]\)，\(H\) 上界 \(\log L_v\)），实际排序接近「只按集中度挑 head」。全文没有缓存失效或置信度门控，指令切换时该不该整体作废，论文没答。</dd>
 <dt>复现门槛</dt><dd>无需训练与校准；四个 backbone 加 LIBERO/CALVIN 与真机，单张 4090 即可测延迟（batch=1、BF16）。真门槛是缺超参，三个量都得自己重扫。</dd>
 </dl>
 </div>
 
 <h2 id="summary">1 核心摘要</h2>
 <p>作者的问题设定一句话：<strong>已有的 VLA token caching 没用上 VLA 的归纳偏置——文本语义会引导视觉定位</strong>。VLA-Cache 已把「相似度提名静态 token → 注意力剔除任务相关 token → 按层调复用比例」跑通，但对两件事一视同仁：所有 head 平均、所有层同等参与决策。</p>
-<p><strong>token 级</strong>：不同 head 的跨模态行为差别很大，有的锐利指向交互区域，有的把注意力铺在背景上，直接平均会稀释信息性响应，选出的「任务相关 token」偏向背景（spatial misalignment）。做法是按每个 head 的「文本→视觉注意力份额 <code>I</code> 减去该分布的空间熵 <code>H</code>」打分（<code>S_head = 0.5·I − 0.5·H</code>），取高分 head 组成 <code>M_l</code>，只在这批 head 上平均得到每个视觉 token 的相关性 <code>V_j</code>，<code>V_j &gt; τ_task</code> 进 <code>P_task</code>，可复用集合 <code>P_reuse = P_static \ P_task</code>。</p>
-<p><strong>层 级</strong>：跨模态表征在深度上不均匀，在「还没稳定」的层复用会把噪声传给下游，等稳定了再复用又白算前面几层（depth mismatch）。做法是逐层算文本→视觉注意力的熵 <code>E^(l)</code>，min-max 归一化后取 <code>R^(l) = 1 − Ē^(l)</code>，在 <code>K=4</code>、最小层距 <code>d_min=2</code> 下间隔贪心选 4 层，再按选中顺序分配单调递增的保留率 <code>γ = [0.5, 0.65, 0.8, 1.0]</code>，末层强制 100%。</p>
-<p>四个 backbone、两个基准共用同一组常数，不做模型级或基准级调参——这就是「training-free」的实际含义：不训练、不校准，只在前向时读注意力矩阵。<strong>判定：</strong>改的不是机制骨架，而是两个统计口径：head 平均换成分位数筛选，「按层熵连续调比例」换成「选 4 层 + 层距 + 单调 γ」。预算只够一半时先做选层。</p>
+<p><strong>token 级</strong>：不同 head 的跨模态行为差别很大，有的锐利指向交互区域，有的把注意力铺在背景上，直接平均会稀释信息性响应，选出的「任务相关 token」偏向背景（spatial misalignment）。做法是按每个 head 的「文本→视觉注意力份额 \(I\) 减去该分布的空间熵 \(H\)」打分（\(S_{\text{head}} = 0.5I - 0.5H\)），取高分 head 组成 \(M_l\)，只在这批 head 上平均得到每个视觉 token 的相关性 \(V_j\)，\(V_j &gt; \tau_{\text{task}}\) 进 \(P_{\text{task}}\)，可复用集合 \(P_{\text{reuse}} = P_{\text{static}} \setminus P_{\text{task}}\)。</p>
+<p><strong>层 级</strong>：跨模态表征在深度上不均匀，在「还没稳定」的层复用会把噪声传给下游，等稳定了再复用又白算前面几层（depth mismatch）。做法是逐层算文本→视觉注意力的熵 \(E^{(l)}\)，min-max 归一化后取 \(R^{(l)} = 1 - \bar{E}^{(l)}\)，在 \(K=4\)、最小层距 \(d_{\min}=2\) 下间隔贪心选 4 层，再按选中顺序分配单调递增的保留率 \(\gamma = [0.5, 0.65, 0.8, 1.0]\)，末层强制 100%。</p>
+<p>四个 backbone、两个基准共用同一组常数，不做模型级或基准级调参——这就是「training-free」的实际含义：不训练、不校准，只在前向时读注意力矩阵。<strong>判定：</strong>改的不是机制骨架，而是两个统计口径：head 平均换成分位数筛选，「按层熵连续调比例」换成「选 4 层 + 层距 + 单调 \(\gamma\)」。预算只够一半时先做选层。</p>
 
 <h2 id="stage">2 复用机制定位</h2>
-<p>六个环节里主命中两格：<strong>复用候选</strong>（时间相似度提名加一道 head 加权后的任务相关性否决）与<strong>层与预算</strong>（选 4 层 + 层距 + 深度递增保留率，改动最大）。<strong>失效判定</strong>只是部分命中：只有「哪些 token 不许复用」的排除规则 <code>P_task</code>，没有「缓存整体已不可信」的判定，也没有置信度、动作一致性或状态变化触发器。</p>
+<p>六个环节里主命中两格：<strong>复用候选</strong>（时间相似度提名加一道 head 加权后的任务相关性否决）与<strong>层与预算</strong>（选 4 层 + 层距 + 深度递增保留率，改动最大）。<strong>失效判定</strong>只是部分命中：只有「哪些 token 不许复用」的排除规则 \(P_{\text{task}}\)，没有「缓存整体已不可信」的判定，也没有置信度、动作一致性或状态变化触发器。</p>
 <div class="flowline"><span class="on">复用候选</span><span class="part">失效判定</span><span>缓存粒度</span><span class="on">层与预算</span><span>动作接口</span><span>评测</span></div>
-<p><strong>缓存粒度</strong>是 token：静态视觉 patch 在指定层的 K/V，与 VLA-Cache 一致。没有 patch 块、事件段或跨 episode 单位，所以解决不了「跨 episode 复用」或「事件级记忆写入」。<strong>在线性</strong>完全因果，只用 <code>t−1</code> 与 <code>t</code> 两帧，信号全部来自本次前向已算出的注意力矩阵；第 1 帧无缓存须全量 prefill。三层预算独立：token 由保留率经 Top-k 落实，层预算写死 <code>K=4</code>，层内由 <code>γ^(l)</code> 定。</p>
+<p><strong>缓存粒度</strong>是 token：静态视觉 patch 在指定层的 K/V，与 VLA-Cache 一致。没有 patch 块、事件段或跨 episode 单位，所以解决不了「跨 episode 复用」或「事件级记忆写入」。<strong>在线性</strong>完全因果，只用 \(t-1\) 与 \(t\) 两帧，信号全部来自本次前向已算出的注意力矩阵；第 1 帧无缓存须全量 prefill。三层预算独立：token 由保留率经 Top-k 落实，层预算写死 \(K=4\)，层内由 \(\gamma^{(l)}\) 定。</p>
 
 <h2 id="problem">3 问题与动机</h2>
 <p>论文不否定 VLA-Cache，而是指出它「用错了两个平均」。第一处是 head 维平均：不同 head 有的只盯交互区，有的摊在背景上，平均后真正指向夹爪与目标物的响应被稀释，相关性分数向背景偏移，「看起来静止、其实正在被操作」的区域被误判为可复用。第二处是层间没有显式稳定性判据：按层熵「调比例」等于在熵高的层也照样复用一部分，噪声沿深度传播；等表征收敛后才复用，又浪费了前几层本可省下的计算。</p>
@@ -58,23 +66,27 @@
 
 <h2 id="method">4 方法拆解</h2>
 <img class="figure" src="figures/fig3-framework.png" alt="TVCache 框架总图：上支为时间相似度与任务相关 token 选择，下支为 head 过滤与复用层选择">
-<p class="caption">Figure 3：上半支为两帧观测→时间相似度→任务相关 token 选择→静态/动态集合→在复用层装载 KV。下半支左：从 VLA decoder 取文本-视觉注意力，按 head 算 <code>I</code>、<code>H</code>，保留低熵 head 再求均值；下支右：逐层算对齐稳定性，违反层距的层被跳过。</p>
+<p class="caption">Figure 3：上半支为两帧观测→时间相似度→任务相关 token 选择→静态/动态集合→在复用层装载 KV。下半支左：从 VLA decoder 取文本-视觉注意力，按 head 算 \(I\)、\(H\)，保留低熵 head 再求均值；下支右：逐层算对齐稳定性，违反层距的层被跳过。</p>
 
 <h3>4.1 输入、信号与两段串联</h3>
-<p>输入是当前观测 <code>I^t</code>、上一步观测 <code>I^(t−1)</code>、语言指令，以及上一控制步留下的 KV 缓存。每步顺序做四件事：<strong>(a)</strong> 同名 patch 求余弦相似度，<code>Sim ≥ τ</code> 的取 Top-k 得 <code>P_static</code>；<strong>(b)</strong> 取跨模态注意力子张量，算 head 分数并筛 head，得 <code>V_j</code>，超过 <code>τ_task</code> 的进 <code>P_task</code>；<strong>(c)</strong> 逐层算熵，选出 <code>K_reuse</code>；<strong>(d)</strong> 在 <code>K_reuse</code> 每层按 <code>γ^(l)</code> 截取并直接装载这批 token 的 K/V，跳过它们的投影与注意力计算。(a) 只提名、(b) 才否决。</p>
+<p>输入是当前观测 \(I^t\)、上一步观测 \(I^{(t-1)}\)、语言指令，以及上一控制步留下的 KV 缓存。每步顺序做四件事：<strong>(a)</strong> 同名 patch 求余弦相似度，\(\text{Sim} \ge \tau\) 的取 Top-k 得 \(P_{\text{static}}\)；<strong>(b)</strong> 取跨模态注意力子张量，算 head 分数并筛 head，得 \(V_j\)，超过 \(\tau_{\text{task}}\) 的进 \(P_{\text{task}}\)；<strong>(c)</strong> 逐层算熵，选出 \(K_{\text{reuse}}\)；<strong>(d)</strong> 在 \(K_{\text{reuse}}\) 每层按 \(\gamma^{(l)}\) 截取并直接装载这批 token 的 K/V，跳过它们的投影与注意力计算。(a) 只提名、(b) 才否决。</p>
 
 <h3>4.2 token 级：用「强度 − 熵」给 head 打分</h3>
-<p>设第 <code>l</code> 层第 <code>n</code> 个 head 的文本→视觉注意力子张量为 <code>C_l ∈ R^(N_H × L_t × L_v)</code>。两个统计量：<code>I_l^(n) = (1/L_t) · Σ_i Σ_j c_ij^(n)</code>，即落在视觉侧的注意力份额（[0,1]）；<code>H_l^(n) = −(1/L_t) · Σ_i Σ_j c̃_ij^(n) · log c̃_ij^(n)</code>，<code>c̃</code> 沿视觉维重新归一化，衡量注意力在地图上摊得多开（上限 <code>log L_v</code>）。</p>
-<p>合成 <code>S_head(n) = α·I − β·H</code>，<code>α=β=0.5</code> 且全部实验固定，取最高分若干 head 组成 <code>M_l</code>，再 <code>V_j = (1/|M_l|) · Σ_(m∈M_l) Σ_i c_ij^(m)</code>。</p>
-<p><strong>两个实现细节。</strong>其一，<code>α=β=0.5</code> 作用在量级差两个数量级的量上（<code>L_v=256</code> 时 <code>H</code> 上限约 5.5），熵项会系统性压过强度项，排序接近「只按集中度挑 head」。其二，论文没说 <code>M_l</code> 选几个 head、固定数量还是固定比例，<strong>这个缺口让 head 过滤无法精确复现</strong>，只能自己扫（如取前 1/4）。</p>
+<p>设第 \(l\) 层第 \(n\) 个 head 的文本→视觉注意力子张量为 \(C_l \in \mathbb{R}^{N_H \times L_t \times L_v}\)。两个统计量：\(I_l^{(n)} = \frac{1}{L_t}\sum_i\sum_j c_{ij}^{(n)}\)，即落在视觉侧的注意力份额（\([0,1]\)）；\(H_l^{(n)} = -\frac{1}{L_t}\sum_i\sum_j \tilde{c}_{ij}^{(n)}\log \tilde{c}_{ij}^{(n)}\)，\(\tilde{c}\) 沿视觉维重新归一化，衡量注意力在地图上摊得多开（上限 \(\log L_v\)）。</p>
+<p>合成 \(S_{\text{head}}(n) = \alpha I - \beta H\)，\(\alpha=\beta=0.5\) 且全部实验固定，取最高分若干 head 组成 \(M_l\)，再 \(V_j = \frac{1}{|M_l|}\sum_{m\in M_l}\sum_i c_{ij}^{(m)}\)。</p>
+<p><strong>两个实现细节。</strong>其一，\(\alpha=\beta=0.5\) 作用在量级差两个数量级的量上（\(L_v=256\) 时 \(H\) 上限约 5.5），熵项会系统性压过强度项，排序接近「只按集中度挑 head」。其二，论文没说 \(M_l\) 选几个 head、固定数量还是固定比例，<strong>这个缺口让 head 过滤无法精确复现</strong>，只能自己扫（如取前 1/4）。</p>
 
 <h3>4.3 层 级：按文本-视觉熵选复用层并强制拉开间距</h3>
-<p>对每层算归一化跨模态注意力的香农熵 <code>E^(l) = H(C̃_l)</code>，跨层 min-max 归一化得 <code>Ē^(l)</code>，稳定性分数 <code>R^(l) = 1 − Ē^(l)</code>：熵越低说明文本到视觉的分布越集中，该层跨模态表征越成形。选层写成带约束的组合优化 <code>K_reuse = argmax Σ_(l∈K) R^(l)</code>，<code>s.t. |l_i − l_j| ≥ d_min</code>，用间隔贪心求解：每次取可用层里 <code>R</code> 最高的，选中后锁掉 <code>[l−d_min+1, l+d_min−1]</code>。全部实验 <code>K=4</code>、<code>d_min=2</code>；间隔约束是不让 4 层挤在同一段深度里，否则等于只在一个窄区间省了计算。</p>
-<p>选完层再定每层保留比例：<code>γ^(l) = [0.5, 0.65, 0.8, 1.0]</code>，按选中顺序单调递增，最后一个复用层强制全保留。理由是浅层处理冗余局部模式可狠砍，深层语义砍多了易塌缩。</p>
+<p>对每层算归一化跨模态注意力的香农熵 \(E^{(l)} = H(\tilde{C}_l)\)，跨层 min-max 归一化得 \(\bar{E}^{(l)}\)，稳定性分数 \(R^{(l)} = 1 - \bar{E}^{(l)}\)：熵越低说明文本到视觉的分布越集中，该层跨模态表征越成形。选层写成带约束的组合优化</p>
+\[ K_{\text{reuse}} = \arg\max \sum_{l\in K} R^{(l)}, \quad \text{s.t.}\ \left|l_i - l_j\right| \ge d_{\min} \]
+<p>用间隔贪心求解：每次取可用层里 \(R\) 最高的，选中后锁掉 \([l-d_{\min}+1,\ l+d_{\min}-1]\)。全部实验 \(K=4\)、\(d_{\min}=2\)；间隔约束是不让 4 层挤在同一段深度里，否则等于只在一个窄区间省了计算。</p>
+<p>选完层再定每层保留比例：</p>
+\[ \gamma^{(l)} = [0.5,\ 0.65,\ 0.8,\ 1.0] \]
+<p>按选中顺序单调递增，最后一个复用层强制全保留。理由是浅层处理冗余局部模式可狠砍，深层语义砍多了易塌缩。</p>
 
 <h3>4.4 训练无关意味着什么，以及留下的空缺</h3>
 <p>训练侧为零：不改权重、不加模块、不需要校准集，推理侧新增的全是读矩阵、排序、Top-k。开销分解（Table III）：patch 相似度 0.651–0.782 ms、head 过滤 0.708–0.747 ms、token 选择 0.304–0.322 ms、<strong>选层 0.968–1.052 ms（最大项）</strong>、记账 0.066–0.075 ms，合计 2.837–2.888 ms，几乎不随保留率变化。</p>
-<p><strong>指令切换时缓存怎么办，论文没有回答。</strong>正文与公式只形式化了视觉 patch 的 <code>P_reuse</code>；文本 token 的 K/V 是否复用、换指令后如何失效，只有一句「对不变的指令复用历史缓存」。可推的理由是视觉 token 在文本之前、其 KV 由因果掩码决定、不含文本信息；但 <code>V_j</code> 与 <code>P_task</code> 会随新指令重算，同一批静态 token 可能突然被判为任务相关，而它在旧指令下已被复用若干步。这属于实现决定，不是论文结论。</p>
+<p><strong>指令切换时缓存怎么办，论文没有回答。</strong>正文与公式只形式化了视觉 patch 的 \(P_{\text{reuse}}\)；文本 token 的 K/V 是否复用、换指令后如何失效，只有一句「对不变的指令复用历史缓存」。可推的理由是视觉 token 在文本之前、其 KV 由因果掩码决定、不含文本信息；但 \(V_j\) 与 \(P_{\text{task}}\) 会随新指令重算，同一批静态 token 可能突然被判为任务相关，而它在旧指令下已被复用若干步。这属于实现决定，不是论文结论。</p>
 
 <h2 id="evidence">5 证据与实验</h2>
 <p>四个 backbone：OpenVLA-OFT、BitVLA、π0.5、VLA-Adapter。仿真为 LIBERO（四个 suite，每 suite 500 episodes）与 CALVIN（仅 VLA-Adapter，ABC→D）；真机 Franka Research 3 加双相机，LoRA 微调 OpenVLA-OFT，四任务各 100 条示范、50 次评测。基线 FastV、SparseVLM、DivPrune、VLA-Cache，同保留率比较，延迟在单张 RTX 4090、batch=1、BF16 下测。</p>
@@ -108,7 +120,7 @@
 <p><strong>消融的读法。</strong>12.5% 下 +14.50 pp 里 +12.70 来自选层，head 过滤只有 +1.40；50% 时两者几乎打平（+0.35 与 +0.15），组合超出线性叠加的部分只有 0.4。真机正文只给三个数：SetKettle 50% 时 94%（与全量持平）、12.5% 时 87%、HangCup 50% 时 82%，四任务曲线没有对应数值表。</p>
 <img class="figure" src="figures/fig4-attention.png" alt="VLA-Cache 与 TVCache 的跨模态注意力热力图对比">
 <p class="caption">Figure 5：左右两组为两个场景，每组左为 VLA-Cache、右为 TVCache；红色越深表示文本对视觉 token 的注意力越强。TVCache 的响应集中在夹爪与目标物，VLA-Cache 背景散点更多。</p>
-<p><strong>能否横向比。</strong>同 backbone、同保留率、同 FLOPs 口径内自洽（4.0139 / 1.6414 = 2.45）。跨 backbone 不可比：<code>K=4</code> 在层数不同的模型上覆盖比例不同，FLOPs 降幅从 2.08× 波动到 2.45×。跨论文也不可比，VLA-Cache 的数字是本文重跑的，引用时应注明。</p>
+<p><strong>能否横向比。</strong>同 backbone、同保留率、同 FLOPs 口径内自洽（4.0139 / 1.6414 = 2.45）。跨 backbone 不可比：\(K=4\) 在层数不同的模型上覆盖比例不同，FLOPs 降幅从 2.08× 波动到 2.45×。跨论文也不可比，VLA-Cache 的数字是本文重跑的，引用时应注明。</p>
 
 <h2 id="fit">6 优点、局限与 VLA 适配</h2>
 <div class="duo">
@@ -118,18 +130,18 @@
 </div>
 <div>
 <h4>不成立的前提</h4>
-<p>① 「head 可靠性在同一模型内稳定」只在一集一指令、固定相机下验证；换桌面、换光照、相机抖动下 <code>I−H</code> 排序可能整体翻转。② 「层熵低 = 表征稳定」：熵衡量注意力集中度，不是时序一致性，一层可以既集中又对帧间变化极敏感。③ 「<code>α=β=0.5</code> 通用」：量级不匹配，换 <code>L_v</code> 后未必最优。</p>
+<p>① 「head 可靠性在同一模型内稳定」只在一集一指令、固定相机下验证；换桌面、换光照、相机抖动下 \(I-H\) 排序可能整体翻转。② 「层熵低 = 表征稳定」：熵衡量注意力集中度，不是时序一致性，一层可以既集中又对帧间变化极敏感。③ 「\(\alpha=\beta=0.5\) 通用」：量级不匹配，换 \(L_v\) 后未必最优。</p>
 </div>
 </div>
 <p><strong>延迟与闭环风险。</strong>2.84–2.89 ms 每控制步都要付，在轻量模型上占比显著：VLA-Adapter 在 CALVIN 上单步 43.72 ms，选层一项吃掉约 1 ms，FLOPs 1.92× 而延迟只有 1.07×；选层结果本是模型属性，改成每 N 步重算几乎无损。更要紧的是它没有「缓存已经错了」的检测：只在事前排除 token，不在事后检查动作。某个静态区域若在本步承担关键接触（夹爪刚碰到物体、像素变化很小但语义已变），会被当作可复用而跳过重算，且不产生可观测信号，只能等任务失败。这与 Gated VLA-Cache 用解码期 logit margin 做事后门控互补而非竞争。</p>
-<p><strong>最小改造（只拿一半）。</strong>不动 head 过滤（<code>τ_task</code> 与 <code>|M_l|</code> 缺失），只实现选层：每层算 <code>E^(l)</code>，min-max 后取 <code>R^(l)</code>，用 <code>K=4, d_min=2</code> 贪心选层，<code>γ</code> 用 <code>[0.5,0.65,0.8,1.0]</code>，其余沿用 VLA-Cache。按消融，这一半单独就有 +12.70 pp，且层集合可离线算一次、在线只查表。</p>
+<p><strong>最小改造（只拿一半）。</strong>不动 head 过滤（\(\tau_{\text{task}}\) 与 \(|M_l|\) 缺失），只实现选层：每层算 \(E^{(l)}\)，min-max 后取 \(R^{(l)}\)，用 \(K=4,\ d_{\min}=2\) 贪心选层，\(\gamma\) 用 \([0.5,0.65,0.8,1.0]\)，其余沿用 VLA-Cache。按消融，这一半单独就有 +12.70 pp，且层集合可离线算一次、在线只查表。</p>
 
 <h2 id="repro">7 落地清单</h2>
 <ul class="checklist">
-<li><b>先对齐口径。</b>同一 backbone 重跑 VLA-Cache 的 12.5%，确认 <code>k</code> 与保留率的换算；论文未给 <code>τ</code>，从 0.9 起扫，以「复现值与 69.50% 相差 ≤1 pp」为通过条件。</li>
-<li><b>head 分数先做量级检查。</b>记录前 20 步的 <code>I</code> 与 <code>H</code>；若 <code>H</code> 中位数比 <code>I</code> 大一个数量级，先试 <code>H / log L_v</code> 归一化再按 0.5/0.5 加权，与原始写法 A/B；<code>|M_l|</code> 取 <code>N_H/4</code> 并记录是否稳定。</li>
-<li><b>层选择打印出来看。</b>输出每个模型选中的 4 个层号；若全落在后半段，<code>γ</code> 按选中顺序赋值会让复用层都接近 1.0，收益低于 FLOPs 预期，改按绝对深度赋值。</li>
-<li><b>选层做成低频统计。</b><code>R^(l)</code> 从每步改为每 episode 或每 10 步，验收：开销从 2.84 ms 降到 ≤1.9 ms，成功率变化 ≤0.3 pp。</li>
+<li><b>先对齐口径。</b>同一 backbone 重跑 VLA-Cache 的 12.5%，确认 \(k\) 与保留率的换算；论文未给 \(\tau\)，从 0.9 起扫，以「复现值与 69.50% 相差 ≤1 pp」为通过条件。</li>
+<li><b>head 分数先做量级检查。</b>记录前 20 步的 \(I\) 与 \(H\)；若 \(H\) 中位数比 \(I\) 大一个数量级，先试 \(H / \log L_v\) 归一化再按 0.5/0.5 加权，与原始写法 A/B；\(|M_l|\) 取 \(N_H/4\) 并记录是否稳定。</li>
+<li><b>层选择打印出来看。</b>输出每个模型选中的 4 个层号；若全落在后半段，\(\gamma\) 按选中顺序赋值会让复用层都接近 1.0，收益低于 FLOPs 预期，改按绝对深度赋值。</li>
+<li><b>选层做成低频统计。</b>\(R^{(l)}\) 从每步改为每 episode 或每 10 步，验收：开销从 2.84 ms 降到 ≤1.9 ms，成功率变化 ≤0.3 pp。</li>
 <li><b>指令切换单独测。</b>构造含 2–3 次切换的 episode，做「切换后全量重算一帧」与「不重算」的 A/B；差距 &gt;2 pp 说明必须加显式 flush。</li>
 </ul>
 <div class="srcbox">
