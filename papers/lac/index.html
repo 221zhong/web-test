@@ -33,283 +33,193 @@
 <article>
 <div class="verdict">
 <div class="vt">决策卡</div>
-<p>能拿到的是：跨帧视觉 KV 复用的「选择器」不再靠阈值——一个小 CNN 直接在任务损失下学习哪些 token 值得重算，并且顺带把精度拉高了（LIBERO 75.0%→76.9%）。代价是：必须能对 VLA 反传动作损失、必须有一张 attention map 做热启动、每帧多一次光流前向。</p>
+<p>能拿到的是：跨帧 KV 复用的选择器不再靠阈值——一个小 CNN 在任务损失下学习哪些 token 值得重算，顺带把成功率拉高了（75.0%→76.9%）。代价是要对动作损失反传、有 attention map 做热启动、每帧多一次光流前向。</p>
 <dl>
-<dt>最小可复用件</dt><dd>「逐 token saliency CNN + 场景级缓存预算分类器」这一对模块，以及它们插进 decoder 的三条改造（保留位置编码 / rotary 只作用于重算 token / 逐层 KV 局部更新）。</dd>
-<dt>主要风险</dt><dd>Stage I 依赖 VLA 的 attention map 做监督；光流在高速自运动、模糊、低纹理场景下退化（作者在附录 A 自陈）；两阶段训练把「免训练加速器」变成「需要训练的新组件」。</dd>
-<dt>复现门槛</dt><dd>需要能跑 task-loss 微调（真机实验用 LoRA 微调 OpenVLA）、一小段 in-domain rollout 数据、RAFT-small 权重；论文未公开 λ、比例集合 R、温度 τ、p<sub>recover</sub> 的具体取值，这几项要自己扫。</dd>
+<dt>最小可复用件</dt><dd>逐 token saliency CNN + 场景级预算分类器这一对模块，以及插进 decoder 的三条改造（保留位置编码 / rotary 只作用于重算 token / 逐层 KV 局部更新）。</dd>
+<dt>主要风险</dt><dd>Stage I 依赖 attention map 监督；光流在高速自运动、模糊、低纹理下退化；两阶段训练把「免训练加速器」变成「需要训练的新组件」。</dd>
+<dt>复现门槛</dt><dd>要能跑 task-loss 微调、一小段 in-domain rollout 数据、RAFT-small 权重；λ、τ 等超参论文未给出，得自己扫。</dd>
 </dl>
 </div>
 
 <h2 id="summary">1 核心摘要</h2>
 
-<p>这篇要解决的问题是 VLA 在闭环控制里的固定浪费：每一帧都把整幅图像重新编码一遍，而相邻帧之间大部分像素根本没动。已有做法（token 剪枝、token 合并、跨帧 KV 缓存）都用<strong>手工规则</strong>决定「哪些 token 可以省掉」，论文的判断是这类规则与任务目标脱钩——原文的说法是 “where the model attends is not necessarily what the task requires”：注意力高的地方不一定对当前动作有用，注意力低但静止的目标物却可能在两步之后就成为交互对象。</p>
+<p>要解决的浪费很固定：VLA 每帧把整幅图像重新编码一遍，而相邻帧大部分像素没动。已有做法（剪枝、合并、跨帧 KV 缓存）都用<strong>手工规则</strong>决定省哪些 token，论文的判断是这类规则与任务目标脱钩——注意力高的地方不一定对当前动作有用，注意力低但静止的目标物却可能在两步之后成为交互对象。</p>
 
-<p>LAC 的做法是把这件事写成策略学习问题，引入两个轻量模块，二者都吃同一个「运动感知输入」<code>V<sub>t</sub> = [I<sub>t</sub>; O<sub>t</sub>]</code>，其中 <code>I<sub>t</sub></code> 是当前帧、<code>O<sub>t</sub></code> 是 RAFT-small 估出的光流：</p>
+<p>LAC 把它写成策略学习。两个模块吃同一个运动感知输入 <code>V<sub>t</sub> = [I<sub>t</sub>; O<sub>t</sub>]</code>（<code>I<sub>t</sub></code> 当前帧，<code>O<sub>t</sub></code> 为 RAFT-small 从相邻两帧估出的光流）：</p>
 
 <ul>
-<li><strong>Cached Token Selector</strong>：一个小 CNN，输出与视觉 token 网格对齐的逐 token saliency <code>S<sub>t</sub> = {s<sub>t</sub><sup>(i)</sup>} ∈ [0,1]<sup>N</sup></code>；分数高 = 必须重算，分数低 = 可以从缓存里取。</li>
-<li><strong>Cache Ratio Predictor</strong>：同样吃 <code>V<sub>t</sub></code>，在离散比例集合 <code>R = {r<sub>1</sub>,…,r<sub>C</sub>}</code> 上输出 logits，选一个整体复用预算 <code>r<sub>t</sub></code>，再由 selector 的排序取最低分的 <code>k<sub>t</sub> = N · r<sub>t</sub></code> 个 token 缓存。</li>
+<li><strong>Cached Token Selector</strong>：小 CNN，输出与视觉 token 网格对齐的逐 token saliency <code>S<sub>t</sub> ∈ [0,1]<sup>N</sup></code>，高分重算、低分从缓存取。</li>
+<li><strong>Cache Ratio Predictor</strong>：输出离散比例集合 <code>R</code> 上的 logits，选整体预算 <code>r<sub>t</sub></code>，selector 按分数取最低的 <code>k<sub>t</sub> = N · r<sub>t</sub></code> 个 token 缓存。</li>
 </ul>
 
-<p>训练分两阶段：Stage I 让 selector 用 MSE 去拟合冻结 VLA 的 attention map（<code>L<sub>align</sub></code>）做热启动；Stage II 冻结 VLA、只训这两个模块，总目标是 <code>L<sub>total</sub> = L<sub>VLA</sub> + λL<sub>ratio</sub></code>，其中 <code>L<sub>ratio</sub> = −E<sub>p̃</sub>[r]</code> 奖励更高的缓存比例。两个离散决策（argmax 选比例、top-k 选 token）用 Gumbel-Softmax + straight-through 做「前向硬、反向软」。推理时决策全部确定性，再加一个随机恢复机制（以 <code>p<sub>recover</sub></code> 概率把一部分已缓存 token 强制重算）来压制长期误差累积。</p>
+<p>训练两阶段。Stage I 让 selector 用 MSE 拟合冻结 VLA 的 attention map 做热启动；Stage II 冻结 VLA、只训这两个模块，<code>L<sub>total</sub> = L<sub>VLA</sub> + λL<sub>ratio</sub></code>，<code>L<sub>ratio</sub></code> 奖励更高的缓存比例。两处离散决策（argmax 选比例、top-k 选 token）用 Gumbel-Softmax + straight-through 做「前向硬、反向软」。推理期决策全确定性，另加随机恢复：以 <code>p<sub>recover</sub></code> 把一部分已缓存 token 强制重算。</p>
 
-<p><strong>判定：</strong>论文自称这是「第一个可学习的自适应缓存框架」——把缓存策略整个换成一个可训练的策略网络；就这条线目前能核到的公开工作看，这个定位站得住。收益也确实不只是速度：它在 OpenVLA / LIBERO 上同时拿到 75.0%→76.9% 的平均成功率、1.76× 墙钟加速、FLOPs 降 25.3%。但它换来的是「必须训练」，并且仍然是相邻控制步之间的短时 KV 复用，不做跨 episode 的事件记忆。</p>
-
-<p><strong>相对 VLA-Cache 的增量</strong>：VLA-Cache 用三条固定启发式——patch 像素余弦相似度提名静态候选、text-to-vision 注意力剔除任务相关 token、按层注意力熵给每层分配复用率。LAC 把前两条合并成一个端到端学习的打分函数（不再用像素相似度，改用光流 + 学习到的 saliency），把第三条换成场景级的学习型预算预测器，并且<strong>放弃了层自适应</strong>：所有层共用同一个 token mask。所以它不是 VLA-Cache 的超集，而是把「判定信号」整体替换掉。</p>
+<p><strong>判定：</strong>「第一个可学习的自适应缓存框架」这个定位站得住。收益不只是速度——OpenVLA / LIBERO 上 75.0%→76.9%、1.76× 加速（51.91→29.51 ms）、FLOPs −25.3%。换来的是「必须训练」，且仍是相邻控制步之间的短时 KV 复用，不做跨 episode 记忆。</p>
 
 <h2 id="stage">2 复用机制定位</h2>
 
 <div class="flowline"><span class="on">复用候选</span><span class="on">失效判定</span><span>缓存粒度</span><span class="part">层与预算</span><span class="part">动作接口</span><span>评测</span></div>
 
-<p>主命中「复用候选」与「失效判定」：这两个环节在这篇里被合并成同一个学习问题——selector 打分决定谁进缓存、谁失效重算，predictor 决定整体预算，两者都直接由 <code>∇L<sub>VLA</sub></code> 塑形，而不是由相似度阈值或注意力熵塑形。部分命中「层与预算」：预算这一维做到了自适应（这是论文的核心贡献之一），但<strong>层</strong>这一维没有策略——附录 B 只说每层 KV 各自按同一个 mask 做局部更新，没有像 VLA-Cache 那样逐层给不同复用率。部分命中「动作接口」：它对 action head 是无关的（自回归的 OpenVLA 与 diffusion head 的 CogAct 都跑通了），但没有改造动作表示，加速收益集中在每步第一个 action token 的 prefill 上。</p>
+<p>主命中「复用候选」与「失效判定」：两个环节合并成同一个学习问题——selector 决定谁进缓存、谁失效重算，predictor 决定整体预算，两者都由 <code>∇L<sub>VLA</sub></code> 塑形。部分命中「层与预算」：预算自适应，但<strong>层</strong>这一维没有策略，每层 KV 各按同一个 mask 局部更新。部分命中「动作接口」：对 action head 无关（自回归 OpenVLA 与 diffusion head 的 CogAct 都跑通），收益集中在每步首个 action token 的 prefill。</p>
 
 <div class="wide">
 <table class="cmp">
-<tr><th>维度</th><th>LAC 的做法</th><th>备注 / 与 VLA-Cache 的差异</th></tr>
-<tr><td>判定信号</td><td>学习到的逐 token saliency（CNN，输入 <code>[I<sub>t</sub>;O<sub>t</sub>]</code>）+ 学习到的场景级比例 logits；训练期梯度来自 <code>L<sub>VLA</sub></code>，Stage I 用 VLA attention map 做 MSE 热启动</td><td>VLA-Cache 用「像素余弦相似度 → 注意力剔除 → 层熵」三段固定规则；LAC 用光流替代像素相似度，用任务梯度替代启发式</td></tr>
-<tr><td>复用单位</td><td>视觉 token 级，二值 mask <code>M<sub>t</sub> ∈ {0,1}<sup>N</sup></code>，与视觉编码器 token 网格一一对应；<code>N</code> 由 backbone 决定（本文未报告具体数值；按 OpenVLA 的常规配置约为每帧 256）</td><td>不是 patch 级、不是层级；同一个 mask 施加到所有 decoder 层</td></tr>
-<tr><td>失效与重算</td><td><strong>局部失效</strong>：每个 token 独立判定，没有「整帧失效」的全局事件；额外用一个随机恢复机制（概率 <code>p<sub>recover</sub></code>）把一部分缓存 token 强制重算，防止误差跨步累积</td><td>无显式事件边界；对场景突变的响应是隐式的——比例预测器会在动态场景下调低缓存比例</td></tr>
-<tr><td>层级策略</td><td>无层自适应。附录 B：第 <code>l</code> 层的 KV 按 <code>{K<sub>t</sub><sup>l</sup>,V<sub>t</sub><sup>l</sup>}</code> 局部覆盖、其余沿用 <code>{K<sub>t−1</sub><sup>l</sup>,V<sub>t−1</sub><sup>l</sup>}</code>；attention mask 收窄到 active token 集合</td><td>VLA-Cache 逐层设 <code>α<sup>l</sup></code>；LAC 把自由度让给了 token 维与场景维</td></tr>
-<tr><td>在线性</td><td>因果（只用当前帧与上一帧）。每步额外开销 = 一次 RAFT-small + 两次小 CNN 前向，<strong>与 Transformer 层数无关</strong>。需离线两阶段训练；推理期无随机性（决策确定性），但缓存比例逐帧可变，故延迟本身可变</td><td>不需要对数几率等解码期信号，不引入额外自回归前向</td></tr>
+<tr><th>维度</th><th>LAC</th><th>VLA-Cache（差异）</th></tr>
+<tr><td>判定信号</td><td>学习的逐 token saliency（CNN，输入 <code>[I<sub>t</sub>;O<sub>t</sub>]</code>）+ 学习的场景级比例 logits；梯度来自 <code>L<sub>VLA</sub></code>，Stage I 用 attention map 热启动</td><td>像素余弦相似度 → text-to-vision 注意力剔除 → 层熵分配复用率，三段固定规则</td></tr>
+<tr><td>复用单位</td><td>视觉 token 级二值 mask，<strong>同一个 mask 施加到所有 decoder 层</strong></td><td>token 级，但每层复用率不同（<code>α<sup>l</sup></code>）</td></tr>
+<tr><td>失效与重算</td><td><strong>逐 token 局部失效</strong>，没有整帧失效的全局事件；靠随机恢复（<code>p<sub>recover</sub></code>）防误差累积；动态场景由预测器调低预算</td><td>无事件边界，复用率与当前帧运动强度无关</td></tr>
+<tr><td>在线开销</td><td>每步一次 RAFT-small + 两次小 CNN 前向，<strong>与层数无关</strong>；离线需两阶段训练</td><td>只用相似度与注意力统计，免训练</td></tr>
 </table>
 </div>
-
-<p>一句话概括定位：它回答的是<strong>「用什么信号决定重算」</strong>——答案是「学出来的、以任务损失为监督的 saliency」；缓存粒度是 <strong>token</strong> 而非 patch 或层；失效是<strong>逐 token 的局部失效</strong>，配合一个随机兜底。</p>
 
 <h2 id="problem">3 问题与动机</h2>
 
-<h3>3.1 VLA-Cache 这类启发式具体在哪里坏掉</h3>
+<h3>3.1 启发式在哪里坏掉</h3>
 
-<p>论文对既有方法的批评落在一个很具体的点上：规则选择器的监督信号是<strong>代理量</strong>（proxy），而不是任务成功率。展开成三条可检验的失效路径：</p>
-
-<ul>
-<li><strong>像素相似度会把「即将被操作的目标物」判成可复用。</strong>目标物在抓取前几帧是静止的，像素完全不变，于是被划进复用集合；等机械臂伸过去需要它的细粒度视觉更新时，缓存里存的还是几帧前的旧表征。论文用 Figure 3 的可视化说明这一点：规则方法之所以缓存左侧篮子，只是因为它一开始是静止的；正文接着叙述这种「省掉关键更新」导致机械臂最终卡在篮子边缘、无法完成放置。</li>
-<li><strong>注意力不是任务相关性。</strong>注意力分数反映的是模型「在看哪里」，而动作需要的是「哪里会改变下一步的状态」。两者在静态背景、视觉干扰物上系统性错位。</li>
-<li><strong>固定预算无法适应场景变化。</strong>VLA-Cache 的复用率由层注意力熵推出，是全局的、与当前帧运动强度无关的量；静态场景本可以更激进，动态场景本应更保守，但规则给不出这个调节。</li>
-</ul>
-
-<img class="figure" src="figures/fig1-rule-vs-learnable.png" alt="规则方法与 LAC 的缓存比例与成功率对照">
-<p class="caption">原图：作者 LaTeX 源码 <code>figures/fig1.pdf</code>（矢量原图，对应正文 Figure 1），300 dpi 渲染。上 (a)：规则 selector 与 VLA 之间没有梯度回路，只能保守地停在 <code>20% 缓存比例 / 85.4% 成功率</code>；下 (b)：学习型 selector 接受 <code>∇L<sub>VLA</sub></code> 回传，可以推到 <code>40% 缓存比例 / 85.6% 成功率</code>。右侧两张掩码图为同一场景示意。论文未说明该对照所用的 suite 与 trial 数，宜当作定性证据而非基准数字。</p>
-
-<h3>3.2 本文假设</h3>
-
-<p>论文的假设写得很直白：最优策略应当<strong>按场景运动与任务需求分配算力</strong>——复用冗余信息，只重算最显著的部分；而这个策略不该手工设计，应当<strong>直接在任务成功率上优化</strong>。三个设计选择都从这条假设推出来：</p>
+<p>批评落在一点上：规则选择器的监督信号是<strong>代理量</strong>，不是任务成功率。三条失效路径：</p>
 
 <ul>
-<li>用<strong>光流</strong>而不是语言做条件，因为语言引导要一个足够大的编码器才能把指令对齐到像素，这笔开销与「加速」的目标直接冲突（附录 D.3 的对照：把光流换成轻量语言条件模块，成功率从 85.6% 掉到 83.0%）。</li>
-<li>用<strong>两个模块分工</strong>而不是一个：token 级排序（相对重要性）与场景级预算（绝对数量）是两种不同粒度的决策，混在一个输出里不好训。</li>
-<li>用<strong>两阶段训练</strong>而不是端到端从零训：离散 top-k 在稀疏监督下冷启动极不稳定（去掉 Stage I 掉到 79.2%，见第 5 节）。</li>
+<li><strong>像素相似度会把「即将被操作的目标物」判成可复用。</strong>目标物在抓取前几帧静止、像素不变，被划进复用集合；等机械臂伸过去需要细粒度更新时，缓存里已是几帧前的旧表征。可视化里规则方法一直缓存左侧篮子，机械臂最后卡在篮子边缘。</li>
+<li><strong>注意力不是任务相关性。</strong>注意力反映模型「在看哪里」，动作要的是「哪里会改变下一步的状态」，两者在静态背景与干扰物上系统性错位。</li>
+<li><strong>固定预算无法适应场景变化。</strong>复用率由层注意力熵推出，与当前帧运动无关。</li>
 </ul>
 
-<h3>3.3 与论文点名的基线对照</h3>
+<h3>3.2 假设与三个设计选择</h3>
 
-<div class="wide">
-<table>
-<tr><th>方法</th><th>判定信号</th><th>是否训练</th><th>论文对它的评价</th></tr>
-<tr><td>Baseline（OpenVLA / CogAct）</td><td>无（全量重算）</td><td>否</td><td>精度上限参考；每步全量 prefill</td></tr>
-<tr><td>FastV</td><td>LLM 第 2 层后的注意力，固定比例剪 token</td><td>否</td><td>为单图 VLM 设计，剪枝伤空间保真度；在短动作序列上收益被开销吃掉</td></tr>
-<tr><td>SparseVLM</td><td>文本-视觉注意力 + 自适应稀疏率</td><td>否</td><td>论文实测 FLOPs 降但 CUDA 时间反而升（1.407 T 却 83.39 ms），说明理论上省的不等于墙钟上省</td></tr>
-<tr><td>VLA-Cache</td><td>像素相似度 + text-to-vision 注意力 + 层熵</td><td>否</td><td>最相关工作；静态、规则化策略，无法适应场景动态变化</td></tr>
-<tr><td>LAC（本文）</td><td>光流条件下的学习型 saliency + 学习型比例</td><td><strong>是</strong>（两阶段，VLA 冻结）</td><td>—</td></tr>
-</table>
-</div>
+<p>假设：最优策略应按<strong>场景运动与任务需求分配算力</strong>，并<strong>直接在任务成功率上优化</strong>。三个选择都从这条推出来：</p>
+
+<ul>
+<li>条件用<strong>光流</strong>而不是语言——语言引导要足够大的编码器才能对齐指令与像素，与加速冲突；换成轻量语言模块实测 85.6%→83.0%。</li>
+<li><strong>两个模块分工</strong>：token 级排序与场景级预算粒度不同，混在一个输出里不好训。</li>
+<li><strong>两阶段</strong>：离散 top-k 在稀疏监督下冷启动极不稳定，去掉 Stage I 掉到 79.2%。</li>
+</ul>
+
+<p>免训练基线里，SparseVLM 的 FLOPs 降到 1.407 T 但 CUDA 时间反涨到 83.39 ms。同一组对照里，规则选择器停在 20% 缓存比例（85.4% 成功率），学习型推到 40%（85.6%）。</p>
 
 <h2 id="method">4 方法拆解</h2>
 
 <img class="figure" src="figures/fig2-framework.png" alt="LAC 两阶段训练与方法总图">
-<p class="caption">原图：作者 LaTeX 源码 <code>figures/framework.pdf</code>（矢量原图，对应正文 Figure 2），渲染为 PNG。上排 Stage I：VLA（冻结，雪花）出 attention scores，selector（可训练，火焰）出 predicted scores，两者做 MSE；下排 Stage II：selector 出 saliency 图、predictor 在 {80%,60%,…,40%} 的候选格点上选一个比例（红叉为落选、绿勾为选中），按比例取最低分 token 生成 mask，与 active tokens 一起进冻结的 VLA，梯度 <code>∇L<sub>VLA</sub></code> 沿红虚线回流更新两个模块。</p>
+<p class="caption">Figure 2：上排 Stage I 用冻结 VLA 的 attention scores 监督 selector 的 predicted scores，做 MSE；下排 Stage II 由比例预测器在候选格点上选预算，按 saliency 取最低分 token 生成 mask，与 active tokens 一起进 VLA，梯度沿红虚线回流更新两个模块。</p>
 
-<h3>4.1 输入与两个模块</h3>
+<h3>4.1 两个模块</h3>
 
-<p>方法作用在视觉 token 序列 <code>X<sub>t</sub> = {x<sub>t</sub><sup>(1)</sup>,…,x<sub>t</sub><sup>(N)</sup>}</code> 上。两个模块都不看 VLA 内部，只看一个运动感知张量：</p>
+<p>两个模块都不看 VLA 内部，只看 <code>V<sub>t</sub> = [I<sub>t</sub>; O<sub>t</sub>]</code>。Selector 输出 <code>s<sub>t</sub><sup>(i)</sup> ∈ [0,1]</code>，下采样率必须与视觉编码器的 patch 网格对齐，输出分辨率与 <code>N</code> 不匹配就没法直接当 mask 用。</p>
 
-<p><code>V<sub>t</sub> = [I<sub>t</sub>; O<sub>t</sub>]</code>，其中 <code>O<sub>t</sub></code> 由 RAFT-small 从 <code>(I<sub>t−1</sub>, I<sub>t</sub>)</code> 估计。</p>
-
-<p><strong>Selector</strong> 是一个小 CNN <code>f<sub>sel</sub>(·;θ<sub>sel</sub>)</code>，输出 <code>S<sub>t</sub> = f<sub>sel</sub>(V<sub>t</sub>;θ<sub>sel</sub>)</code>，<code>s<sub>t</sub><sup>(i)</sup> ∈ [0,1]</code>。语义是「该 token 本步信息是否关键」，高分 → 重算，低分 → 缓存。CNN 的空间下采样率必须与 VLA 视觉编码器的 patch 网格对齐，这是实现时最容易踩的坑：输出分辨率与 <code>N</code> 不匹配就没法直接当 mask 用。</p>
-
-<p><strong>Predictor</strong> 是 <code>f<sub>pred</sub>(·;θ<sub>pred</sub>)</code>，输出离散比例集合上的 logits <code>L<sub>t</sub> = {l<sub>t</sub><sup>(1)</sup>,…,l<sub>t</sub><sup>(C)</sup>}</code>，推理取 argmax 得 <code>r<sub>t</sub></code>。设计意图写得很清楚：静态场景学到大比例（省得多），动态场景学到小比例（保精度）。两个模块的分工是「相对排序」与「绝对预算」解耦——selector 只负责谁比谁更重要，predictor 只负责留多少个。</p>
-
-<p><strong>论文未给出</strong>的数值：比例集合 <code>R</code> 的具体元素与 <code>C</code> 的取值、selector CNN 的通道数/参数量、RAFT-small 的输入分辨率。Figure 2 的插图把候选画成 80% / 60% / … / 40% 的递减格点，可作为一个实现起点（<code>C=5</code> 左右、上限 0.8–0.9、下限 0.4），但<strong>这不是论文给出的超参</strong>。</p>
+<p>Predictor 输出 <code>C</code> 个候选比例上的 logits，推理取 argmax 得 <code>r<sub>t</sub></code>，静态场景学到大比例、动态场景学到小比例；两者把相对排序与绝对预算解耦。论文未给出 λ、τ、<code>R</code> 与 <code>C</code>、selector 通道数、<code>p<sub>recover</sub></code>；图中候选格点画成 80% / 60% / … / 40%，只当实现起点。</p>
 
 <h3>4.2 两阶段训练</h3>
 
-<p><strong>Stage I：注意力对齐热启动。</strong>冻结 VLA，让 selector 去拟合 VLA 自己的注意力图：</p>
+<p><strong>Stage I</strong>：<code>L<sub>align</sub> = MSE(f<sub>sel</sub>(V<sub>t</sub>), S<sub>VLA</sub>)</code>。注意力不是最优策略，但它是「一般视觉显著性」的好代理，这一步只给离散策略一个初值；实现时要把多头、多层与 text→vision 子矩阵聚合成一个 <code>N</code> 维向量。</p>
 
-<p><code>L<sub>align</sub> = MSE( f<sub>sel</sub>(V<sub>t</sub>;θ<sub>sel</sub>), S<sub>VLA</sub> )</code></p>
+<p><strong>Stage II</strong>：VLA 冻结，<code>L<sub>total</sub> = L<sub>VLA</sub> + λL<sub>ratio</sub></code>，<code>L<sub>ratio</sub> = −E<sub>p̃</sub>[r]</code>，<code>p̃</code> 是 Gumbel-Softmax 的软概率。隐含要求是 <code>L<sub>VLA</sub></code> 的梯度能穿过动作解码器回到 selector：VLA 得是可微可训的 imitation learner（CogAct 的 diffusion head 也要能反传），并有 in-domain 的（观测，动作）数据。</p>
 
-<p>论文自己承认注意力分数「不是最优策略」，但它是「一般视觉显著性」的好代理。这一步的作用是给离散策略一个合理的初值，避免 Stage II 在稀疏监督下收敛到坏的局部解。实现上要注意 <code>S<sub>VLA</sub></code> 的形状：需要把多头、多层、以及 text→vision 子矩阵聚合成一个 <code>N</code> 维向量（论文没说用了哪几层、怎么聚合，<strong>未确认</strong>）。</p>
+<h3>4.3 离散决策怎么反传</h3>
 
-<p><strong>Stage II：联合优化。</strong>VLA 继续冻结，只训两个模块，目标是任务损失加一个「鼓励多缓存」的正则：</p>
+<p><strong>Predictor 走 Gumbel-Softmax</strong>：<code>p̃<sub>t</sub><sup>(j)</sup> = softmax((l<sub>t</sub><sup>(j)</sup> + g<sub>j</sub>)/τ)</code>，<code>g<sub>j</sub> ∼ Gumbel(0,1)</code>。前向取硬 one-hot，反向用 straight-through 把梯度传给 <code>p̃<sub>t</sub></code>：前向是真正的离散预算，反向是软松弛。</p>
 
-<p><code>L<sub>total</sub> = L<sub>VLA</sub> + λ L<sub>ratio</sub></code>，<code>L<sub>ratio</sub> = −E<sub>p̃<sub>t</sub></sub>[r] = −Σ<sub>j=1..C</sub> p̃<sub>t</sub><sup>(j)</sup> r<sub>j</sub></code></p>
+<p><strong>Selector 用陡峭 sigmoid 近似 top-k</strong>：前向用真 mask，反向构造 <code>M̃<sub>t</sub><sup>(i)</sup> = σ((s<sub>t</sub><sup>(i)</sup> − θ<sub>k</sub>)/τ<sub>s</sub>)</code>，<code>θ<sub>k</sub></code> 是第 <code>k<sub>t</sub></code> 名的阈值。于是梯度只依赖「分数与第 k 名阈值的相对关系」，不必把 <code>k</code> 变成可导量——「<em>哪些</em>」和「<em>多少</em>」能拆开就靠这点。实现时 <code>θ<sub>k</sub></code> 必须 <code>stop_gradient</code>，否则梯度绕回预算，两个模块互相污染。</p>
 
-<p>这里 <code>p̃<sub>t</sub></code> 是 Gumbel-Softmax 出来的软概率。<code>λ</code> 是效率-精度权衡旋钮，<strong>论文未报告其取值</strong>，需要自己扫（建议从「<code>λL<sub>ratio</sub></code> 与 <code>L<sub>VLA</sub></code> 同量级」开始，例如 <code>λ·E[r] ≈ 0.1·L<sub>VLA</sub></code>）。</p>
-
-<p>注意 Stage II 的一个隐含要求：<code>L<sub>VLA</sub></code> 的梯度必须能穿过动作解码器回到 selector。这意味着你的 VLA 必须是可微可训的 imitation learner（CogAct 的 diffusion head 也要能反传），并且要有 in-domain 的 (观测, 动作) 数据。这是把「免训练加速器」变成「需要训练的新组件」的那一步。</p>
-
-<h3>4.3 可微分离散决策：硬前向、软反向</h3>
-
-<p>两处不可导：predictor 的 argmax、selector 的 top-k。处理方式不同：</p>
-
-<p><strong>Predictor 用 Gumbel-Softmax。</strong>加 Gumbel 噪声 <code>g<sub>j</sub> ∼ Gumbel(0,1)</code> 并用温度 <code>τ</code> 缩放：</p>
-
-<p><code>p̃<sub>t</sub><sup>(j)</sup> = exp((l<sub>t</sub><sup>(j)</sup> + g<sub>j</sub>)/τ) / Σ<sub>k</sub> exp((l<sub>t</sub><sup>(k)</sup> + g<sub>k</sub>)/τ)</code></p>
-
-<p>前向取硬 one-hot：<code>p<sub>t</sub> = one_hot(argmax<sub>j</sub> p̃<sub>t</sub><sup>(j)</sup>)</code>；反向用 straight-through estimator 把梯度直接传给 <code>p̃<sub>t</sub></code>。所以前向是真正的离散预算，反向是软松弛。</p>
-
-<p><strong>Selector 用陡峭 sigmoid 近似 top-k。</strong>前向用真 mask <code>M<sub>t</sub></code>（top-k 硬选），反向构造</p>
-
-<p><code>M̃<sub>t</sub><sup>(i)</sup> = σ( (s<sub>t</sub><sup>(i)</sup> − θ<sub>k</sub>) / τ<sub>s</sub> )</code></p>
-
-<p>其中 <code>θ<sub>k</sub></code> 是第 <code>k<sub>t</sub></code> 个 token 的分数阈值（也就是第 k 名的分数），<code>τ<sub>s</sub></code> 是温度。这个形式的含义是：分数远高于阈值的 token 软 mask 趋近 1、远低于的趋近 0，临界带内的 token 拿到非零梯度。<code>τ<sub>s</sub></code> 越小越接近硬阶跃、梯度越稀疏，<strong>论文未给取值</strong>。</p>
-
-<p><strong>为什么这个组合重要（本页分析）</strong>：这套 STE 让 selector 的梯度只依赖「分数与第 k 名阈值的相对关系」，而不需要把 <code>k</code> 也变成可导量——这正是它可以把「<em>哪些</em>」和「<em>多少</em>」拆成两个模块、各自用不同松弛方式的原因。实现时<strong>必须</strong>保证 <code>θ<sub>k</sub></code> 用 <code>stop_gradient</code> 或按常数处理，否则梯度会绕一圈回到预算上，两个模块的职责会互相污染。</p>
-
-<h3>4.4 推理：怎么无损插进现有 decoder</h3>
-
-<p>附录 B 给出的三条改造，是「能不能直接接进现有 decoder」的关键，比公式更值得抄：</p>
+<h3>4.4 接进现有 decoder 的三条改造</h3>
 
 <ul>
-<li><strong>位置管理。</strong>用一个内部状态数组记录哪些 token 需要重算。被缓存的 token <strong>保留上一步的位置编码</strong>。这样 attention mask 才能被动态裁剪，把自注意力的范围收缩到 active token 集合上——省下的计算正是从这儿来的。</li>
-<li><strong>条件式 rotary。</strong>为了给当前步引入新位置信息，rotary embedding <strong>只作用于被重算的 token</strong>；缓存 token 跳过这一步，保留之前编码好的状态。这一条与上一条配套（本页分析）：如果对缓存 token 也重新施加 RoPE，它就会拿到「当前步」的旋转相位，与它实际携带的旧内容不一致。</li>
-<li><strong>动态 KV 局部更新。</strong>第 <code>l</code> 层：新算的 token 覆盖为 <code>{K<sub>t</sub><sup>l</sup>, V<sub>t</sub><sup>l</sup>}</code>，被复用的 token 继承 <code>{K<sub>t−1</sub><sup>l</sup>, V<sub>t−1</sub><sup>l</sup>}</code>。新旧条目混在同一个 KV 里仍然给出合法的注意力输出——论文的论证是 Transformer 的<strong>置换不变性</strong>：注意力可以对任意一组合法的 key-value 对计算。</li>
+<li><strong>位置管理。</strong>内部状态数组记录哪些 token 要重算；缓存 token 保留上一步的位置编码，attention mask 才能收缩到 active 集合，算力就是这么省下来的。</li>
+<li><strong>条件式 rotary。</strong>rotary 只作用于重算的 token，缓存 token 跳过。若对它也施加 RoPE，它会拿到当前步相位，与携带的旧内容不一致。</li>
+<li><strong>动态 KV 局部更新。</strong>第 <code>l</code> 层新算的 token 覆盖为 <code>{K<sub>t</sub><sup>l</sup>,V<sub>t</sub><sup>l</sup>}</code>，复用的继承 <code>{K<sub>t−1</sub><sup>l</sup>,V<sub>t−1</sub><sup>l</sup>}</code>；新旧混在同一个 KV 里仍合法，依据是注意力的置换不变性。</li>
 </ul>
 
-<p>论文明确说这套机制与标准自回归 KV cache 完全兼容，且<strong>主要收益来自每步第一个 action token 的生成</strong>——后续 token 本来就走增量解码，没有额外可省的开销。这句话对部署决策很重要：如果你的 VLA 已经用 action chunking 一次前向出多步动作，那 LAC 的加速空间会被摊薄，收益主要体现在 chunk 边界那一次 prefill 上。</p>
+<p><strong>随机恢复</strong>：每步以 <code>p<sub>recover</sub></code> 挑一部分已缓存 token 强制重算，防止某个区域永久冻结在缓存里——消融里最大的单点提升（+2.2 个百分点），概率与比例论文未给出。</p>
 
-<p><strong>随机恢复。</strong>每步以概率 <code>p<sub>recover</sub></code> 随机挑一部分「已缓存」token 强制重算。这是对抗误差累积的兜底：纯确定性复用会让某个区域的状态永久冻结在缓存里，而随机刷新保证它迟早被更新一次。消融显示这一项带来最大的单点提升（+2.2 个百分点，见第 5 节）。<code>p<sub>recover</sub></code> 与「一部分」的具体比例<strong>论文未给出</strong>。</p>
-
-<h3>4.5 开销为什么与层数无关</h3>
-
-<p>附录 C 把开销写成 <code>C<sub>policy</sub> ≈ O(H·W·C<sub>cnn</sub>)</code>：它只随输入图像分辨率线性增长，<strong>与 Transformer 深度 <code>L</code> 和序列长度 <code>N</code> 都无关</strong>，而且每帧只算一次。对比 backbone：每层 <code>C<sub>base</sub> ≈ 4ND<sup>2</sup> + 2N<sup>2</sup>D + 2NDM</code>，LAC 把它替换为 <code>C<sub>lac</sub> ≈ 4N<sub>act</sub>D<sup>2</sup> + 2(N<sub>act</sub>·N)D + 2N<sub>act</sub>DM</code>（<code>N<sub>act</sub> = (1−ρ)N</code>）。关键结构信息：<strong>投影与 FFN 只对 active token 算，但注意力的 K/V 侧仍是全长 <code>N</code></strong>——active query 要 attend 到 active + cached 的全部上下文。所以随着层数增加，policy 开销的相对占比是单调下降的；这也是为什么深 backbone（OpenVLA 的 Llama-7B）上这笔开销可以忽略，而浅模型上要重新算账。</p>
+<p><strong>开销与层数无关</strong>：policy 开销 <code>O(H·W·C<sub>cnn</sub>)</code> 每帧算一次，只随分辨率线性增长。投影与 FFN 只算 <code>N<sub>act</sub> = (1−ρ)N</code> 个 active token，但 attention 的 K/V 侧仍是全长 <code>N</code>；层越深占比越低，深 backbone 上几乎免费，浅模型上要重算账。</p>
 
 <h2 id="evidence">5 证据与实验</h2>
 
-<p><strong>协议。</strong>三套评测，两套 backbone：LIBERO 用官方 OpenVLA 权重（每 suite 10 个子任务，多次 trial 平均）；SIMPLER 用 CogAct（Google 机械臂，4 个任务，Visual Matching 与 Variant Aggregation 两种设置）；真机用 Franka + LoRA 微调的 OpenVLA，4 个任务。指标是成功率、FLOPs（理论）、CUDA time（墙钟）。<strong>论文未报告 GPU 型号、trial 次数、p<sub>recover</sub> 与 λ 的取值。</strong></p>
+<p><strong>协议。</strong>LIBERO 用官方 OpenVLA 权重（每 suite 10 个任务）；SIMPLER 用 CogAct（4 个任务，两种设置）；真机用 Franka + LoRA 微调的 OpenVLA（4 个任务）。GPU 型号与 trial 次数论文未报告。</p>
 
-<h3>5.1 LIBERO（OpenVLA backbone）</h3>
+<h3>5.1 LIBERO（OpenVLA）</h3>
 
 <div class="wide">
 <table class="cmp">
 <tr><th>方法</th><th>Spatial</th><th>Object</th><th>Goal</th><th>Long</th><th>平均 SR</th><th>FLOPs (T) ↓</th><th>CUDA (ms) ↓</th></tr>
 <tr><td>Baseline (OpenVLA)</td><td>84.4%</td><td>86.6%</td><td>75.6%</td><td>53.2%</td><td>75.0%</td><td>1.864</td><td>51.91</td></tr>
-<tr><td>SparseVLM</td><td>79.8%</td><td>67.0%</td><td>72.6%</td><td>39.4%</td><td>64.7%</td><td>1.407</td><td>83.39</td></tr>
-<tr><td>FastV</td><td>83.4%</td><td>84.0%</td><td>74.2%</td><td>51.6%</td><td>73.3%</td><td>1.864</td><td>53.28</td></tr>
 <tr><td>VLA-Cache</td><td>83.8%</td><td>85.8%</td><td>76.4%</td><td>52.8%</td><td>74.7%</td><td>1.355</td><td>31.83</td></tr>
 <tr><td><strong>LAC</strong></td><td><strong>85.6%</strong></td><td>86.2%</td><td>76.6%</td><td><strong>59.2%</strong></td><td><strong>76.9%</strong></td><td>1.392</td><td><strong>29.51</strong></td></tr>
 </table>
 </div>
 
-<p>论文自报的读法是：平均 +1.9 个百分点（75.0%→76.9%）、1.76× 墙钟加速（51.91 ms→29.51 ms）、FLOPs −25.3%（1.864→1.392 T）。四个 suite 里增益分布很不均：<strong>LIBERO-Long 53.2%→59.2%（+6.0）</strong>贡献了几乎全部平均提升，Spatial +1.2、Goal +1.0，而 <strong>Object 反而略降（86.6%→86.2%，−0.4）</strong>。这与「长程任务里静态背景占比更大、复用收益更高」的解释相符，但也说明提升并不均匀。</p>
+<p>平均 +1.9 个百分点，墙钟 1.76×，FLOPs −25.3%。增益很不均：<strong>Long 53.2%→59.2%</strong>贡献了几乎所有提升，Spatial +1.2、Goal +1.0，<strong>Object 反而略降（86.6%→86.2%）</strong>——长程任务静态背景占比更大，但提升并不均匀。</p>
 
-<img class="figure" src="figures/fig3-learned-vs-rule-mask.png" alt="VLA-Cache 与 LAC 在 LIBERO 上的缓存掩码逐帧对比">
-<p class="caption">原图：作者 LaTeX 源码 <code>figures/visualization.pdf</code>（矢量原图，对应正文 Figure 3），渲染为 PNG。上排 VLA-Cache：掩码在整段轨迹里几乎不变，<strong>左侧白色篮子全程被橙色覆盖（= 被缓存）</strong>；下排 LAC：中间一行是学习到的 token saliency（高亮稳定落在夹爪上），下排掩码里篮子保持原色（= 每步重算）、只有背景被橙色缓存，绿色块为随机恢复的 token。这正是「规则方法省了不该省的东西」的可视证据。</p>
+<img class="figure" src="figures/fig3-learned-vs-rule-mask.png" alt="VLA-Cache 与 LAC 的缓存掩码逐帧对比">
+<p class="caption">Figure 3：同一段 LIBERO 轨迹的缓存掩码。上排 VLA-Cache 的掩码几乎不变，左侧静止的篮子全程被橙色覆盖（= 缓存）；下排 LAC 的 saliency 落在夹爪上，篮子保持原色（= 每步重算）。</p>
 
 <div class="notice">
-<p><b>横向比较的口径提醒。</b>这张表里 VLA-Cache 的 74.7% / 1.355 T / 31.83 ms 是<strong>本文作者在同一 OpenVLA 权重、同一套 LIBERO 协议下重跑的结果</strong>（与 VLA-Cache 自己报告的 74.7% 吻合），因此 LAC 76.9% vs 74.7% 这组对比在本文内部是成立的。但两点必须注意：其一，LAC 的 FLOPs（1.392 T）其实<strong>高于</strong> VLA-Cache（1.355 T），墙钟只快约 1.08×（29.51 vs 31.83 ms），主要增量在成功率而不在速度；其二，跨论文比较（例如拿 LAC 的 SIMPLER 数字去比 VLA-Cache 的 LIBERO 数字）无效，因为 backbone 与任务集不同。</p>
+<p><b>口径提醒。</b>表里 VLA-Cache 的 74.7% / 1.355 T / 31.83 ms 是作者在同一权重下重跑的。LAC 的 FLOPs 其实<strong>高于</strong>它，墙钟只快约 1.08×——增量在成功率，不在速度。</p>
 </div>
 
-<h3>5.2 SIMPLER（CogAct backbone）</h3>
+<h3>5.2 另外两套评测</h3>
 
-<div class="wide">
-<table class="cmp">
-<tr><th>设置 / 方法</th><th>PickCan</th><th>MoveNear</th><th>Drawer</th><th>DrawerApple</th><th>平均 SR</th><th>FLOPs (T) ↓</th><th>CUDA (ms) ↓</th></tr>
-<tr><td>Visual Matching · CogAct</td><td>91.3%</td><td>85.0%</td><td>71.8%</td><td>50.9%</td><td>74.8%</td><td>1.847</td><td>54.29</td></tr>
-<tr><td>Visual Matching · VLA-Cache</td><td>92.0%</td><td>83.3%</td><td>70.5%</td><td>51.6%</td><td>74.4%</td><td>1.496</td><td>39.63</td></tr>
-<tr><td>Visual Matching · LAC</td><td><strong>92.3%</strong></td><td>84.2%</td><td><strong>72.7%</strong></td><td><strong>52.8%</strong></td><td><strong>75.5%</strong></td><td>1.511</td><td><strong>37.82</strong></td></tr>
-<tr><td>Variant Aggregation · CogAct</td><td>89.6%</td><td>80.8%</td><td>28.3%</td><td>46.6%</td><td>61.3%</td><td>1.807</td><td>53.54</td></tr>
-<tr><td>Variant Aggregation · VLA-Cache</td><td>91.7%</td><td>79.3%</td><td><strong>32.5%</strong></td><td>45.8%</td><td>62.3%</td><td>1.493</td><td>39.11</td></tr>
-<tr><td>Variant Aggregation · LAC</td><td><strong>92.1%</strong></td><td>81.5%</td><td>31.2%</td><td><strong>47.1%</strong></td><td><strong>63.0%</strong></td><td>1.506</td><td><strong>37.90</strong></td></tr>
-</table>
-</div>
+<p><strong>SIMPLER（CogAct）</strong>说明架构无关：diffusion 动作头与 OpenVLA 的自回归离散动作完全不同，LAC 仍获益（Visual Matching 74.8%→75.5%，Variant Aggregation 61.3%→63.0%），合并口径 FLOPs −17.4%、1.42× 加速。</p>
 
-<p>这组实验的意义不在绝对分数，而在<strong>架构无关性</strong>：CogAct 的动作头是 diffusion-based，与 OpenVLA 的自回归离散动作完全不同，LAC 仍能接上并获益（VM 74.8%→75.5%，VA 61.3%→63.0%）。论文自报的是两种设置的合并口径：FLOPs 降 17.4%（1.827→1.509 T），加速 1.42×（53.92→37.86 ms）。</p>
+<p><strong>真机（Franka + LoRA）</strong>平均 33.0%→38.0%，+5.0 个百分点。但这组要谨慎：VLA-Cache 在真机上反掉到 30.0%（低于 baseline），LAC 的提升几乎全来自 KnockBottle 一个任务（44.0%→64.0%）；成功率都是 4 的倍数，单次翻转就是 2–4 个百分点。</p>
 
-<h3>5.3 真机（Franka + LoRA 微调的 OpenVLA）</h3>
-
-<div class="wide">
-<table class="cmp">
-<tr><th>方法</th><th>KnockCrisp</th><th>PickMango</th><th>CoverBanana</th><th>KnockBottle</th><th>平均 SR</th><th>FLOPs (T) ↓</th><th>CUDA (ms) ↓</th></tr>
-<tr><td>Baseline (OpenVLA)</td><td>48.0%</td><td>16.0%</td><td>24.0%</td><td>44.0%</td><td>33.0%</td><td>1.893</td><td>37.38</td></tr>
-<tr><td>VLA-Cache</td><td>48.0%</td><td>12.0%</td><td>20.0%</td><td>40.0%</td><td>30.0%</td><td>1.534</td><td>33.36</td></tr>
-<tr><td><strong>LAC</strong></td><td><strong>52.0%</strong></td><td>12.0%</td><td>24.0%</td><td><strong>64.0%</strong></td><td><strong>38.0%</strong></td><td>1.569</td><td><strong>32.47</strong></td></tr>
-</table>
-</div>
-
-<p>论文自报平均 +5.0 个百分点（33.0%→38.0%）。注意这组数字要谨慎读：<strong>VLA-Cache 在真机上反而掉到 30.0%</strong>（低于 baseline），而 LAC 的提升几乎全部来自 KnockBottle 一个任务（44.0%→64.0%）；PickMango 上两者都比 baseline 差。真机的 baseline CUDA time（37.38 ms）也明显低于 LIBERO 的 51.91 ms，说明两套实验的观测分辨率或动作步数不同，<strong>两套数字不可混用</strong>。此外所有成功率都是 4 的倍数，暗示单任务试验次数较少（25 或 50 次，论文未报告），单任务 1 次翻转就是 2–4 个百分点，方差不可忽略。</p>
-
-<h3>5.4 消融</h3>
+<h3>5.3 消融</h3>
 
 <div class="wide">
 <table class="cmp">
 <tr><th>变体</th><th>成功率</th><th>FLOPs (T) ↓</th><th>CUDA (ms) ↓</th><th>读法</th></tr>
-<tr><td>Selector only</td><td>82.20%</td><td>1.283</td><td>28.48</td><td>只学「哪些」，已经比同类剪枝基线稳</td></tr>
-<tr><td>+ Reuse Predictor</td><td>83.40% (+1.2)</td><td>1.325</td><td>29.04</td><td>预算自适应会在关键时刻<strong>主动降</strong>缓存比例，用一点速度换精度</td></tr>
-<tr><td>+ Recovery（完整）</td><td>85.60% (+2.2)</td><td>1.377</td><td>29.32</td><td>随机刷新是单项收益最大的一步</td></tr>
-<tr><td>w/o Stage I 初始化</td><td>79.2%</td><td>—</td><td>—</td><td>冷启动失败：热启动值 6.4 个百分点（对应 Table 5）</td></tr>
-<tr><td>语言引导替代光流</td><td>83.0%</td><td>—</td><td>—</td><td>轻量语言条件模块容量不够，做不好指令-像素对齐</td></tr>
+<tr><td>Selector only</td><td>82.20%</td><td>1.283</td><td>28.48</td><td>只学「哪些」已比剪枝基线稳</td></tr>
+<tr><td>+ Predictor</td><td>83.40% (+1.2)</td><td>1.325</td><td>29.04</td><td>关键时刻主动降预算，换精度</td></tr>
+<tr><td>+ Recovery（完整）</td><td>85.60% (+2.2)</td><td>1.377</td><td>29.32</td><td>单项收益最大的一步</td></tr>
+<tr><td>w/o Stage I</td><td>79.2%</td><td>—</td><td>—</td><td>冷启动失败，热启动值 6.4 点</td></tr>
+<tr><td>语言替代光流</td><td>83.0%</td><td>—</td><td>—</td><td>轻量语言模块对齐不好指令与像素</td></tr>
 </table>
 </div>
 
-<p>消融的成功率是对着 <strong>LIBERO-Spatial 的 85.6%</strong> 读的（与主表 Spatial 列一致）；论文表格未显式标注 suite 与 trial 数。另有一处小的数字不一致值得记下：Table 2 的完整模型写 FLOPs 1.377 T / 29.32 ms，Table 1 的 LAC 写 1.392 T / 29.51 ms，差值约 1%，<strong>论文未解释</strong>。</p>
-
-<img class="figure" src="figures/fig4-ratio-curve.png" alt="LIBERO-Spatial 上成功率与 CUDA 时间随复用 token 数的变化">
-<p class="caption">原图：作者源码 <code>figures/libero_curve.png</code>（作者提供的位图原图，对应正文 Figure 4），此处等比缩放。左：LIBERO-Spatial 成功率；右：CUDA 推理时间；横轴为 Number of Tokens。读图值：横轴 50→200 区间内 LAC 从约 87% 缓降到约 77%，VLA-Cache 与 FastV 约 84%→68–73%，SparseVLM 从约 80% 陡降到约 45%。</p>
-
-<p>这张曲线是全文最实用的一张：它说明 LAC 的退化是<strong>平缓</strong>的，而剪枝类方法在高压缩率下是断崖式的；同时右侧曲线显示 LAC 的 CUDA 时间在所有压缩档位上都最低，证明收益是真墙钟而非理论 FLOPs。</p>
+<p>消融对着 LIBERO-Spatial 的 85.6% 读，论文未标注 suite 与 trial 数。另有小不一致：消融表 1.377 T / 29.32 ms，主表 1.392 T / 29.51 ms，论文未解释。</p>
 
 <h2 id="fit">6 优点、局限与 VLA 适配</h2>
 
 <div class="duo">
 <div>
 <h4>可迁移的部分</h4>
-<p>①「一个打分 CNN + 一个预算分类器」的分工结构，可以原样搬到任何「按重要性丢弃中间计算」的场景（视觉 token、记忆槽位、事件候选）。②三条 decoder 改造（保留位置编码、rotary 只作用于重算 token、逐层 KV 局部覆盖）是任何跨帧 KV 复用方案都要处理的细节，本文给了最简可行的写法。③Stage I 的「用模型自己的注意力做热启动」是一个通用的稳定化技巧：离散策略难训时，先用一个便宜代理把分布拉近，再交给任务损失微调。④开销与层数无关这一点，让它在深 backbone 上几乎免费。</p>
+<p>①「打分 CNN + 预算分类器」的分工能搬到任何「按重要性丢弃中间计算」的场景（视觉 token、记忆槽位、事件候选）。②三条 decoder 改造是跨帧 KV 复用的通用细节，这里给了最简写法。③Stage I 用注意力热启动，是离散策略难训时的通用技巧。</p>
 </div>
 <div>
 <h4>不成立的前提</h4>
-<p>①<strong>光流可信</strong>：附录 A 自陈极端视觉条件下光流精度会拖累 selector。②<strong>场景是「局部运动」主导</strong>：快速全局视觉变化或相机高速自运动时，策略会正确地选择重算大部分 token，加速收益<strong>自然消失</strong>——这不是 bug，是方法的下界。③<strong>VLA 的 attention map 可用</strong>：Stage I 需要能取出注意力图，且要自己决定怎么聚合。④<strong>可以训</strong>：需要动作损失可反传 + in-domain 数据。⑤<strong>存在「层」这一维可省</strong>：本文所有层共享一个 mask，如果某几层其实对 token 缺失更敏感，这里还留着未开采的空间。</p>
+<p>①光流可信——附录 A 自陈极端视觉条件下会拖累 selector。②场景由局部运动主导——相机高速自运动时策略会正确地重算大部分 token，加速收益<strong>自然消失</strong>，这是方法的下界而非 bug。③attention map 取得到且要决定怎么聚合。④动作损失可反传、有 in-domain 数据。⑤所有层共享一个 mask，「层」这一维还留着未开采的空间。</p>
 </div>
 </div>
 
-<h3>6.1 延迟风险</h3>
+<h3>6.1 延迟与闭环</h3>
 
-<p>账面 FLOPs 只降 25.3%，墙钟却降 43%，说明省下来的主要是访存与 kernel 启动，而非乘法。这带来两个实际后果：一是<strong>收益强依赖 batch size 与 kernel 实现</strong>，单样本低延迟场景最有利；二是 policy 开销是「每帧固定一次光流 + 两次小 CNN」，在 30 ms 的总预算里已不可忽略（按构造，消融里 selector-only 版本的 28.48 ms 已经包含 selector 与光流的开销）。若你的控制频率要求 >30 Hz，RAFT-small 可能要先换成两帧差或 backbone 自带的 patch 特征差。</p>
+<p>账面 FLOPs 只降 25.3%、墙钟却降 43%，说明省下的是访存与 kernel 启动而非乘法：收益强依赖 batch size，单样本低延迟最有利。policy 开销在 30 ms 预算里已不可忽略（selector-only 的 28.48 ms 已含这部分）；控制频率要 >30 Hz，RAFT-small 得换成两帧差。好处是<strong>最坏延迟有上界</strong>：动态场景下预测器选低比例、退化到接近全量重算，不会忽快忽慢带抖控制环。</p>
 
-<p>还有一个反直觉的工程性质值得利用：<strong>最坏延迟有上界</strong>。动态场景下比例预测器会选低缓存比例，退化到接近全量重算，此时延迟 ≈ baseline + policy 开销，不会出现「忽快忽慢导致控制环抖动」的失控情况。相比「按剩余时间预算贪心剪枝」的做法，这对实时控制更友好。</p>
+<p>风险在失效的滞后性。判定全靠光流，而光流只是上一帧到当前帧的差分量：目标物<strong>即将</strong>成为交互对象时（机械臂在接近、还没接触），光流只覆盖机械臂，目标物仍得低分、继续被缓存；等它真动了才重算，缓存里已是旧表征。随机恢复在补这个滞后，但<strong>只靠视觉运动先验解决不了「即将相关但尚未运动」的失效</strong>——解码期置信度门控与之互补。</p>
 
-<h3>6.2 闭环风险：缓存失效是滞后的</h3>
-
-<p>失效判定完全依赖光流，而光流本身是「上一帧到当前帧」的差分量。当一个静止物体<strong>即将</strong>成为交互对象时（机械臂正在接近但还没接触），光流只覆盖机械臂本身，目标物仍得低分、继续被缓存；等接触发生、目标物真的动了，才被重算——此时缓存里已经是若干步前的旧表征。论文的随机恢复机制（+2.2 个百分点，是消融里最大的一项）本质上就是在补这个滞后。本页判断：<strong>只靠视觉运动先验无法解决「即将相关但尚未运动」的失效</strong>，这也是 Gated VLA-Cache 那类用解码期置信度做兜底的方案与本文互补的原因。</p>
-
-<h3>6.3 换成自有 VLA 的最小改造</h3>
+<h3>6.2 换成自有 VLA 的最小改造</h3>
 
 <ol>
-<li><strong>接口</strong>：在视觉 token 序列进入 LLM 之前插入 <code>M<sub>t</sub> ∈ {0,1}<sup>N</sup></code>；层内投影/FFN 只对 active token 计算，attention 的 K/V 由「新算的 + 缓存的」拼成。要求你的 decoder 能接受长度可变的 query 集合与全长 K/V（大多数 HF 实现需要改 attention mask 的构造，不能只用 <code>attention_mask</code> 的 0/1 填充语义）。</li>
-<li><strong>位置编码</strong>：若用 RoPE，缓存 token 必须跳过旋转、沿用上一步相位；若用可学习绝对位置编码，缓存 token 直接沿用旧 embedding 即可，但要注意别在拼接时重排 index。</li>
-<li><strong>光流的轻量替代</strong>：先试「相邻两帧在视觉编码器 patch 特征上的 L2 差」作为 <code>O<sub>t</sub></code> 的替身（零额外网络，且天然与 token 网格对齐）；不行再上 RAFT-small。这一步同时解决「光流分辨率与 token 网格不对齐」的实现问题。</li>
-<li><strong>没有 attention map 时的 Stage I 替代</strong>：用「上一帧 KV 的 K 与当前帧新算 K 的余弦距离」当伪显著性地标签（变化大 → 高分），或直接用失败 rollout 里的人工标注。若完全跳过 Stage I，按论文的实测会掉约 6.4 个百分点，不推荐。</li>
-<li><strong>预算集合与 λ</strong>：从 <code>C=5</code>、<code>r ∈ {0.9, 0.8, 0.7, 0.6, 0.5}</code> 起步（论文未给集合，这是本页建议），<code>λ</code> 从小到大扫，验收看「成功率不掉 + 平均缓存比例上升」；<code>p<sub>recover</sub></code> 从 0.05–0.1 起步。</li>
-<li><strong>训练成本</strong>：这是主门槛。你需要的不是「一次微调」，而是「能对动作损失求梯度的训练管线 + 与部署同分布的观测」。论文的真机实验用 LoRA 微调 OpenVLA，说明不必全参训练，但 LoRA 也要跑一遍 imitation 训练。<strong>如果只想拿加速而不想训练，这篇不适合你，应该看免训练的 VLA-Cache / TVCache 那一支。</strong></li>
+<li><strong>接口</strong>：视觉 token 进 LLM 前插入 <code>M<sub>t</sub></code>；投影/FFN 只算 active token，K/V 由新算 + 缓存拼成。多数 HF 实现得改 attention mask 构造。</li>
+<li><strong>位置编码</strong>：用 RoPE 时缓存 token 跳过旋转、沿用上一步相位；用可学习绝对位置编码时直接沿用旧 embedding，拼接别重排 index。</li>
+<li><strong>光流的轻量替代</strong>：先试相邻两帧在 patch 特征上的 L2 差当 <code>O<sub>t</sub></code>，零额外网络、天然对齐网格；不行再上 RAFT-small。</li>
+<li><strong>没有 attention map 时</strong>：用「上一帧 K 与当前帧新算 K 的余弦距离」当伪显著性标签，或用失败 rollout 的人工标注。跳过 Stage I 掉约 6.4 个百分点。</li>
+<li><strong>训练成本是主门槛</strong>：要的是能对动作损失求梯度的训练管线 + 同分布的观测。LoRA 可以，但也要跑一遍 imitation 训练。<strong>只想拿加速不想训练，应该看免训练的 VLA-Cache / TVCache 那一支。</strong></li>
 </ol>
 
 <h2 id="repro">7 落地清单</h2>
 
 <ul class="checklist">
-<li><strong>先量三件事再决定要不要训练</strong>：单步 prefill 的墙钟、每帧视觉 token 数 <code>N</code>、以及「静态 token 占比」的经验分布。若 <code>N</code> 很小（≤64）或动作已用 chunking 摊薄 prefill，LAC 的收益会低于论文的 1.76×。</li>
-<li><strong>复现 Stage I 的验收线</strong>：selector 输出与聚合后的 <code>S<sub>VLA</sub></code> 的 MSE 要能降到「随机猜」的 1/3 以下，且 saliency 图目视上应集中在夹爪与目标物——这是 Stage II 不发散的先决条件。</li>
-<li><strong>对齐 token 网格</strong>：selector 输出分辨率 × patch size 必须严格等于视觉编码器输入尺寸；<code>k<sub>t</sub> = round(N·r<sub>t</sub>)</code> 要 clamp 到 <code>[1, N−1]</code>，避免出现全缓存（无 active token，attention 全空）或全重算（退化成 baseline）的边界。</li>
-<li><strong>三条 decoder 改造逐条验证</strong>：①缓存 token 的位置编码确实沿用上一步；②RoPE 只作用于重算 token；③逐层 KV 是局部覆盖而非整段重写。建议先做一个 <code>r=0</code> 的等价性测试——全重算时输出应与 baseline 逐位一致；再做 <code>r=1</code> 的极端测试，观察是否只剩位置编码误差。</li>
-<li><strong>把 <code>p<sub>recover</sub></code> 当主要旋钮</strong>：消融显示它单项贡献 +2.2 个百分点，比 predictor 更大。先用固定比例（比如所有场景都用 0.6）跑通，再加 predictor，这样能分辨掉点来自 token 选择还是预算选择。</li>
-<li><strong>验收指标</strong>：成功率不低于 baseline（论文是 +1.9 个百分点）、平均缓存比例 ≥0.4、P99 单步延迟不超过 baseline 的 1.1×（因为动态场景会退化到近似全量）。若成功率掉了但延迟收益明显，先加 <code>p<sub>recover</sub></code>，再降预算上限。</li>
+<li><strong>先量三件事</strong>：单步 prefill 墙钟、每帧 token 数 <code>N</code>、静态 token 占比。若 <code>N</code> 很小或动作已用 chunking 摊薄 prefill，收益会明显低于 1.76×。</li>
+<li><strong>Stage I 的验收线</strong>：selector 与聚合后 <code>S<sub>VLA</sub></code> 的 MSE 要降到「随机猜」的 1/3 以下，saliency 目视集中在夹爪与目标物。</li>
+<li><strong>对齐 token 网格</strong>：selector 输出分辨率 × patch size 必须等于编码器输入尺寸；<code>k<sub>t</sub> = round(N·r<sub>t</sub>)</code> 要 clamp 到 <code>[1, N−1]</code>，避免全缓存（attention 全空）或全重算。</li>
+<li><strong>三条改造逐条验证</strong>：先做 <code>r=0</code> 的等价性测试（全重算输出应与 baseline 逐位一致），再做 <code>r=1</code> 的极端测试。</li>
+<li><strong>把 <code>p<sub>recover</sub></code> 当主旋钮</strong>：它单项 +2.2 个百分点，比 predictor 更大。先用固定比例跑通再加 predictor，才能分辨掉点来自 token 选择还是预算选择。</li>
 </ul>
 
 <div class="srcbox">
-<p><b>来源：</b>Yujie Wei, Jiahan Fan, Jiyu Guo, Ruichen Zhen, Rui Shao, Xiu Su, Zeke Xie, Hongxun Yao, Shuo Yang, "Learning to Accelerate Vision-Language-Action Models through Adaptive Visual Token Caching", arXiv:2602.00686v2, 2026；数字取自 Table 1（LIBERO）、Table 2（组件消融）、Table 3（SIMPLER）、Table 4（真机）、Table 5（Stage I / 语言条件消融）与第 4.3 节正文，开销分析取自附录 C，推理改造取自附录 B，局限取自附录 A。</p>
-<p><b>图像说明：</b>四张图全部取自作者 arXiv LaTeX 源码（<code>figures/fig1.pdf</code>、<code>figures/framework.pdf</code>、<code>figures/visualization.pdf</code>、<code>figures/libero_curve.png</code>），矢量图按 300 dpi（宽图按适配网页宽度）渲染为 PNG，位图原样等比缩放；均为原图，未裁切、未重绘，不含页面正文、页眉页脚或排版 caption。Figure 1 对应 (a) 规则方法 vs (b) LAC 的对照；Figure 2 为两阶段方法总图；Figure 3 为 VLA-Cache 与 LAC 的缓存掩码对比；Figure 4 为复用比例扫描曲线。</p>
+<p><b>来源：</b>Yujie Wei, Jiahan Fan, Jiyu Guo, Ruichen Zhen, Rui Shao, Xiu Su, Zeke Xie, Hongxun Yao, Shuo Yang, "Learning to Accelerate Vision-Language-Action Models through Adaptive Visual Token Caching", arXiv:2602.00686v2, 2026；数字取自 Table 1（LIBERO）、2（消融）、3（SIMPLER）、4（真机）、5（Stage I / 语言消融）。</p>
 </div>
 
-<p class="pagefoot">相关页面：<a href="../vla-cache/index.html">VLA-Cache · 跨控制步 KV 复用</a> · <a href="../gated-vla-cache/index.html">Gated VLA-Cache · 解码期置信度门控</a> · <a href="../tvcache/index.html">TVCache · 任务相关性重估</a> · <a href="../kv-cache-event-memory/index.html">返回专题二</a></p>
+<p class="pagefoot">相关页面：<a href="../vla-cache/index.html">VLA-Cache · 跨控制步 KV 复用</a> · <a href="../gated-vla-cache/index.html">Gated VLA-Cache · 解码期置信度门控</a> · <a href="../kv-cache-event-memory/index.html">返回专题二</a></p>
 
 </article>
 </div>
