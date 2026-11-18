@@ -10,16 +10,17 @@
 <header><div class="wrap">
 <div class="eyebrow">VLA Historical Memory · Topic</div>
 <h1>KV Cache 与事件记忆专题</h1>
-<p>从跨控制步复用、事件驱动写入到流式长期检索的 11 篇论文路线</p>
+<p>从跨控制步复用、缓存失效门控到流式长期检索的 15 篇论文路线</p>
 <nav><a href="../../index.html">← 返回总站</a></nav>
 </div></header>
 <main>
 <section class="lead"><b>专题问题：</b>VLA 与 Video LLM 的历史不应等同于持续增长的 context。系统需要在每个时间步判断：哪些已有 KV 可直接复用（reuse），哪些局部状态必须刷新（refresh），哪些经事件确认的信息应压缩并写入长期记忆（commit），以及如何在后续 query 到来时检索并回载。</section>
 
-<h2>11 篇工作如何覆盖完整路径</h2>
+<h2>15 篇工作如何覆盖完整路径</h2>
 <table>
 <tr><th>系统环节</th><th>代表工作</th><th>关键问题</th><th>面向 VLA 的含义</th></tr>
 <tr><td>控制步复用</td><td>VLA-Cache</td><td>相邻观测哪些 token 没有变化？</td><td>降低逐控制步 prefill 与 attention 成本。</td></tr>
+<tr><td>复用决策与失效</td><td>LAC、Gated VLA-Cache、TVCache、VLN-Cache</td><td>凭什么判定可复用，什么时候必须放弃复用？</td><td>把「视觉相似」升级为可学习策略、置信度门控与视角位移感知。</td></tr>
 <tr><td>事件写入</td><td>KEMO、StreamMem、HERMES</td><td>哪些变化值得保留，且如何在固定预算中压缩？</td><td>将 motion、appearance、robot state 共同作为 commit 门控。</td></tr>
 <tr><td>多任务运行时</td><td>OxyGen</td><td>控制、对话和记忆构建如何共享同一观测？</td><td>跨任务共享 KV，避免重复编码。</td></tr>
 <tr><td>长期检索</td><td>ReKV、LiveVLM、StreamKV</td><td>如何从长历史中找到 query 相关证据？</td><td>以事件段、摘要和外部存储组织可回载历史。</td></tr>
@@ -36,7 +37,7 @@
 <h2>推荐阅读顺序</h2>
 <table>
 <tr><th>阶段</th><th>阅读顺序</th><th>目标</th></tr>
-<tr><td>VLA 基线</td><td>VLA-Cache → KEMO</td><td>区分跨步计算复用与事件驱动长期记忆写入。</td></tr>
+<tr><td>VLA 基线</td><td>VLA-Cache → LAC → Gated VLA-Cache</td><td>区分跨步计算复用与事件驱动长期记忆写入。</td></tr>
 <tr><td>流式记忆</td><td>StreamMem → HERMES → OxyGen</td><td>理解固定预算、分层语义和多任务共享运行时。</td></tr>
 <tr><td>长历史检索</td><td>ReKV → LiveVLM → StreamKV</td><td>比较外部回载、短长双缓存与事件分段检索。</td></tr>
 <tr><td>极限压缩</td><td>InfiniPot-V → Video-MemComp → VidKV</td><td>比较 token 淘汰、逐层预算和低比特量化的互补关系。</td></tr>
@@ -45,6 +46,10 @@
 <h2>论文精读</h2>
 <section class="grid">
 <a class="paper-card" href="../vla-cache/index.html"><span class="tag">P0 · 控制步复用</span><h3>VLA-Cache</h3><p>以视觉 token 变化决定 KV reuse 与重算。</p><p class="meta">VLA · 2025</p></a>
+<a class="paper-card" href="../lac/index.html"><span class="tag">P0 · 可学习缓存策略</span><h3>LAC</h3><p>用任务梯度学「复用哪些 token、复用多少」，取代规则式启发。</p><p class="meta">VLA · 2026</p></a>
+<a class="paper-card" href="../gated-vla-cache/index.html"><span class="tag">P0 · 置信度门控</span><h3>Gated VLA-Cache</h3><p>logit margin 塌陷即让缓存失效、全量重算，免训练。</p><p class="meta">VLA · 2026</p></a>
+<a class="paper-card" href="../tvcache/index.html"><span class="tag">P1 · 文本-视觉协同</span><h3>TVCache</h3><p>head 可靠性与层稳定性共同决定哪些 KV 可跨帧复用。</p><p class="meta">VLA · 2026</p></a>
+<a class="paper-card" href="../vln-cache/index.html"><span class="tag">P1 · 视角位移感知</span><h3>VLN-Cache</h3><p>移动视角让位置对齐失效，改用动态感知的匹配与语义重检。</p><p class="meta">VLN · 2026</p></a>
 <a class="paper-card" href="../kemo/index.html"><span class="tag">P0 · 事件写入</span><h3>KEMO</h3><p>motion 候选、视觉确认与关键帧 memory 融合。</p><p class="meta">VLA · 2026</p></a>
 <a class="paper-card" href="../streammem/index.html"><span class="tag">P0 · 固定 KV memory</span><h3>StreamMem</h3><p>query-agnostic 剪枝与 frame-wise merge。</p><p class="meta">Streaming Video LLM · 2025</p></a>
 <a class="paper-card" href="../hermes/index.html"><span class="tag">P0 · 分层 KV</span><h3>HERMES</h3><p>浅层细节与深层摘要组成分层历史。</p><p class="meta">Streaming Video LLM · 2026</p></a>

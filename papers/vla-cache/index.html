@@ -74,6 +74,15 @@
     <p>VLA-Cache 将 KV cache 从“单次生成的内部优化”扩展到“相邻控制步之间的跨帧复用”。其最值得借鉴的不是固定的相似度阈值，而是三段式判定：视觉上静止的 token 先成为候选，语言/任务相关 token 被强制刷新，不同 decoder 层再按敏感度调节复用比例。</p>
     <p>对 VLA 历史关键事件检测，建议把该机制作为短期层：平稳期间最大化 <code>reuse</code>，局部状态变化触发 <code>refresh</code>；当 motion、appearance 与 robot state 同时确认状态转移时，再把相应关键帧或压缩 KV <code>commit</code> 到长期事件记忆。这样既不把每一帧都写成长历史，也不会把静态但任务关键的对象错误冻结。</p>
 
+    <h2>后续工作：这条线的四篇续作</h2>
+    <p>VLA-Cache 的判定是三段固定启发式：视觉相似度提名候选、语言条件强制刷新、层敏感度调节比例。后续研究基本都在这三段上换零件，读的时候可以对号入座。</p>
+    <ul class="checklist">
+      <li><a href="../lac/index.html">LAC</a>：把「复用哪些、复用多少」变成可学习策略，用任务梯度训练 token selector 与缓存比例预测器，换掉手工阈值。</li>
+      <li><a href="../gated-vla-cache/index.html">Gated VLA-Cache</a>：不动选择器，补一个解码期置信度门控——top-1/top-2 动作 logit margin 塌陷就全量重算，专治「缓存错了但视觉上看不出来」。</li>
+      <li><a href="../tvcache/index.html">TVCache</a>：把任务相关性从单一 attention 代理升级为 head 可靠性加权 + 层稳定性判断，仍保持免训练。</li>
+      <li><a href="../vln-cache/index.html">VLN-Cache</a>：针对移动平台，位置对齐在视角位移下失效，改用动态感知的匹配与语义重检。</li>
+    </ul>
+
     <h2>图像来源与核验</h2>
     <p>本页图像均来自 arXiv LaTeX 源码：<code>fig/motivation.pdf</code> 与 <code>fig/method.pdf</code>。网页使用由原 PDF 渲染的 PNG，并保留原始 PDF；已逐图检查，图中不含页面正文、页眉页脚、页码或 PDF 排版 caption。实验结果严格采用文字与 HTML 表格，没有实验图片。</p>
   </article></main>
