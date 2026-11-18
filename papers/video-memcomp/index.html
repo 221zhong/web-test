@@ -5,6 +5,8 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Video-MemComp｜论文精读</title>
   <link rel="stylesheet" href="../../style.css">
+<script src="../../mathjax-config.js"></script>
+<script defer src="../../vendor/mathjax/tex-svg.js"></script>
 </head>
 <body>
 <header><div class="wrap">
@@ -21,7 +23,7 @@
 
 <h2 id="summary">1. 核心摘要</h2>
 <p>长视频流令多模态大模型的 Key-Value（KV）cache 随时间线性增长；只按 token 分数剪枝虽然节省显存，却忽略一个关键事实：相同大小的局部压缩误差经过不同 Transformer 层，可能对最终输出产生完全不同的放大效应。Video-MemComp 因而把 KV 管理写成受全局预算约束的误差控制问题，而不是仅做启发式 token eviction。</p>
-<p>论文用一阶 Taylor 展开将输出误差上界拆为层内局部近似误差 <code>𝓔ₗ</code> 与层级结构敏感性 <code>𝓢ₗ</code>。前者由 pre-RoPE 的相似 token 聚合、注意力守恒 logit bias 与层内 KV pruning 降低；后者由离线梯度先验、在线 attention entropy 与 feature magnitude 混合决定预算。Qwen2.5-VL-3B 在每层等效 6K token 时，整体分数由 full-cache 的 62.3 提升至 64.1，同时节省超过 90% KV memory；这说明有选择地遗忘冗余内容可能优于保留完整历史。</p>
+<p>论文用一阶 Taylor 展开将输出误差上界拆为层内局部近似误差 \(\mathcal{E}_{l}\) 与层级结构敏感性 \(\mathcal{S}_{l}\)。前者由 pre-RoPE 的相似 token 聚合、注意力守恒 logit bias 与层内 KV pruning 降低；后者由离线梯度先验、在线 attention entropy 与 feature magnitude 混合决定预算。Qwen2.5-VL-3B 在每层等效 6K token 时，整体分数由 full-cache 的 62.3 提升至 64.1，同时节省超过 90% KV memory；这说明有选择地遗忘冗余内容可能优于保留完整历史。</p>
 
 <h2 id="motivation">2. 研究动机</h2>
 <h3>流式视频的瓶颈不只在长度，还在误差累积</h3>
@@ -32,18 +34,18 @@
 <p>RoPE 把位置信息旋转进 Q/K 表示。同一语义、不同位置的 token 在 post-RoPE 空间未必仍能通过相似度安全合并；直接在 cache 中聚合会引入几何失真。因此本文把 token aggregation 前移到 RoPE 之前的表示空间，并在合并后补偿 attention 的 logit 偏移。</p>
 
 <h2 id="method">3. 方法论</h2>
-<img class="figure" src="figures/fig1-framework.png" alt="Video-MemComp 原论文 Figure 1 总体框架">
-<p class="caption">原论文 Figure 1。上方以一阶 Taylor 展开连接局部误差与层级敏感性；中部执行 pre-RoPE 聚合和层内 pruning；下方以离线敏感性与在线信息密度共同分配层预算。</p>
+<img class="figure" src="figures/fig1-framework.png" alt="Video-MemComp  Figure 1 总体框架">
+<p class="caption">Figure 1：上部将层内误差与层级敏感性相连，中部展示 token 聚合与 KV 剪枝，下部结合静态和动态信息分配各层预算。</p>
 <h3>3.1 用 Taylor 展开把缓存压缩拆成两类误差</h3>
-<p>令第 <code>l</code> 层历史 KV 为 <code>𝓗⁽ˡ⁾</code>，压缩算子为 <code>𝒯</code>，整个模型从所有层缓存映射到输出 <code>𝒪=G(𝓗)</code>。压缩带来的 attention 偏差写作 <code>ΔA⁽ˡ⁾</code>。论文以一阶近似得到：</p>
-<p><code>||Δ𝒪|| ≲ Σₗ ||∂G/∂A⁽ˡ⁾|| · ||ΔA⁽ˡ⁾|| = Σₗ 𝓢ₗ · 𝓔ₗ。</code></p>
-<p><code>𝓔ₗ</code> 是本层合并与剪枝损失造成的局部近似误差；<code>𝓢ₗ</code> 衡量这一层误差对最终输出的放大系数。该式不是对离散 pruning 的精确等式，而是指导压缩决策的可计算代理：先在每层降低 <code>𝓔ₗ</code>，再把更多预算给高 <code>𝓢ₗ</code> 的层。</p>
+<p>令第 \(l\) 层历史 KV 为 \(\mathcal{H}^{(l)}\)，压缩算子为 \(\mathcal{T}\)，整个模型从所有层缓存映射到输出 \(\mathcal{O}=G(\mathcal{H})\)。压缩带来的 attention 偏差写作 \(\Delta A^{(l)}\)。论文以一阶近似得到：</p>
+<p class="math-display">\[\| \Delta \mathcal{O}\| \lesssim \sum _{l} \|\partial G/\partial A^{(l)}\| \cdot \| \Delta A^{(l)}\| = \sum _{l} \mathcal{S}_{l} \cdot \mathcal{E}_{l}\]</p>
+<p>\(\mathcal{E}_{l}\) 是本层合并与剪枝损失造成的局部近似误差；\(\mathcal{S}_{l}\) 衡量这一层误差对最终输出的放大系数。该式不是对离散 pruning 的精确等式，而是指导压缩决策的可计算代理：先在每层降低 \(\mathcal{E}_{l}\)，再把更多预算给高 \(\mathcal{S}_{l}\) 的层。</p>
 <h3>3.2 层内：pre-RoPE aggregation 与 attention-preserved merge</h3>
-<p>每个新视频片段首先进行 inter-frame filtering：与前一帧表示足够相似的 token 被视为时间冗余，动态 token 继续进入后续流程。对单帧内部的空间冗余，模型在注入 RoPE 前按 cosine similarity 选择可融合 token。聚合后的 token 记录 fusion count <code>fᵢ</code>，并加入 <code>Bᵢ=log(fᵢ)</code> 的 logit bias；其意图是让一个合并 token 在注意力中近似保留原来多个 token 的总 attention mass，而非因数量减少被系统性低估。</p>
-<p>随后，proxy query 对该层 K/V 打分；在该层获得的预算 <code>bˡ</code> 内，只保留重要度最高的 KV 对。这里的顺序很重要：先在没有位置旋转干扰的空间做安全聚合，再做稀疏 cache 剪枝，以同时去除空间、时间冗余。</p>
+<p>每个新视频片段首先进行 inter-frame filtering：与前一帧表示足够相似的 token 被视为时间冗余，动态 token 继续进入后续流程。对单帧内部的空间冗余，模型在注入 RoPE 前按 cosine similarity 选择可融合 token。聚合后的 token 记录 fusion count \(f_i\)，并加入 \(B_i=\operatorname{log}(f_i)\) 的 logit bias；其意图是让一个合并 token 在注意力中近似保留原来多个 token 的总 attention mass，而非因数量减少被系统性低估。</p>
+<p>随后，proxy query 对该层 K/V 打分；在该层获得的预算 \(b^{l}\) 内，只保留重要度最高的 KV 对。这里的顺序很重要：先在没有位置旋转干扰的空间做安全聚合，再做稀疏 cache 剪枝，以同时去除空间、时间冗余。</p>
 <h3>3.3 层间：敏感性与信息密度混合的预算分配</h3>
-<p>离线阶段，作者在代表性校准集上统计 <code>𝓢ₗ=E[||∇A⁽ˡ⁾||]</code>，形成结构敏感性的静态先验。在线阶段则计算 attention entropy 和 value feature magnitude：高 entropy 表示注意力更分散、压缩更困难；较大 feature magnitude 表示激活较强。两者组合为输入相关的动态信息密度项。</p>
-<p>每层的预算比例由 uniform regularization、静态敏感性项、动态信息密度项加权混合：<code>ρ⁽ˡ⁾=λᵤρunif+λₛρstatic⁽ˡ⁾+λₑρdyn⁽ˡ⁾</code>，并满足 <code>Σₗbₗ=Btotal</code>。uniform 项防止低分层被饿死；静态项保证对结构敏感层的稳定保护；动态项使预算随当前视频内容变化。</p>
+<p>离线阶段，作者在代表性校准集上统计 \(\mathcal{S}_{l}=E[\| \nabla A^{(l)}\|]\)，形成结构敏感性的静态先验。在线阶段则计算 attention entropy 和 value feature magnitude：高 entropy 表示注意力更分散、压缩更困难；较大 feature magnitude 表示激活较强。两者组合为输入相关的动态信息密度项。</p>
+<p>每层的预算比例由 uniform regularization、静态敏感性项、动态信息密度项加权混合：\(\rho^{(l)}= \lambda _u \rho_{\mathrm{unif}}+\lambda_s\rho_{\mathrm{static}}^{(l)}+\lambda_e\rho_{\mathrm{dyn}}^{(l)}\)，并满足 \(\sum _{l}b_{l}=B_{\mathrm{total}}\)。uniform 项防止低分层被饿死；静态项保证对结构敏感层的稳定保护；动态项使预算随当前视频内容变化。</p>
 <h3>3.4 流式推理时的状态更新</h3>
 <p>每个新片段到来后，系统先过滤跨帧静态内容，再把保留 token 经视觉/语言模型编码，并更新逐层 cache。层内聚合、重要度排序与层预算 pruning 持续发生，因此 cache 大小被锁定在总预算附近，内存增长对视频长度呈近似常数。论文将方法设计为 training-free、model-agnostic；但结构敏感性仍要预先离线校准，不能简单理解为完全无先验。</p>
 

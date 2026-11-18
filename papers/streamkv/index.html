@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>StreamKV｜论文精读</title>
 <link rel="stylesheet" href="../../style.css">
+<script src="../../mathjax-config.js"></script>
+<script defer src="../../vendor/mathjax/tex-svg.js"></script>
 </head>
 <body>
 <header><div class="wrap">
@@ -33,19 +35,19 @@
 
 <h2 id="method">3. 方法论</h2>
 <img class="figure" src="figures/workflow.png" alt="StreamKV 总体流程图">
-<p class="caption">Figure 2。视频被分成语义段，段内 frame-level KV 经压缩写入 KV Bank；问题到来后，从 Bank 中检索相关 KV 回答。左侧展示逐层自适应选择。</p>
+<p class="caption">Figure 2：视频按语义段写入 KV Bank，段内帧级 KV 先压缩；问题到来后，逐层选择相关 KV 生成答案。</p>
 <h3>3.1 总体流程：segment → KV Bank → question-conditioned retrieval</h3>
 <p>输入的视频流先按固定频率采帧，经视觉编码器得到每帧 patch 表征。StreamKV 以相邻帧的视觉相似度定位边界，形成长度受控的语义段；每段含一组 frame feature 和一个逐位置平均的 summary vector。段被顺序送入带局部历史窗口的 Video-LLM，产生每层的 frame-level KV blocks 与一个 summary KV block。frame-level blocks 先被压缩，summary block 始终保留，二者共同写入 KV Bank。用户问题到达时，问题 token 不重新读取原视频，而是在每一层从 KV Bank 选择相关 blocks 并作为 attention context 生成答案。</p>
 <h3>3.2 语义分段与段长控制</h3>
-<p>令相邻帧的视觉表征为 <code>fₜ₋₁</code>、<code>fₜ</code>，作者计算余弦相似度 <code>sₜ = fₜ₋₁·fₜ / (||fₜ₋₁|| ||fₜ||)</code>。低相似度表示显著视觉改变，作为新 segment 的候选边界。为避免由短暂抖动得到过短的段，作者在边界附近设置排除窗口 <code>m</code>；为避免长期静态视频产生过长段，当长度超过 <code>M</code> 时，合并最相似的相邻帧对。因此每段长度被限制在 <code>[m, M]</code>，实验中使用最小 4 帧、最大 64 帧。</p>
+<p>令相邻帧的视觉表征为 \(f_{t-1}\)、\(f_t\)，作者计算余弦相似度 \(s_t=\frac{f_{t-1}\cdot f_t}{\lVert f_{t-1}\rVert\lVert f_t\rVert}\)。低相似度表示显著视觉改变，作为新 segment 的候选边界。为避免由短暂抖动得到过短的段，作者在边界附近设置排除窗口 \(m\)；为避免长期静态视频产生过长段，当长度超过 \(M\) 时，合并最相似的相邻帧对。因此每段长度被限制在 \([m,M]\)，实验中使用最小 4 帧、最大 64 帧。</p>
 <img class="figure" src="figures/segmentation.png" alt="StreamKV 语义分段示意图">
-<p class="caption">Figure 1(a)。相邻视觉特征的低相似度触发语义边界，使 KV 的写入单位对齐视频事件，而非固定时间窗口。</p>
+<p class="caption">Figure 1(a)：相邻帧特征相似度较低处形成段边界，段长由最小与最大长度约束。</p>
 <h3>3.3 summary vector：给每个事件段留下不可压缩的语义锚点</h3>
-<p>对第 <code>i</code> 个段 <code>Sⁱ=[fₜⁱ]ₜ₌₁ᵀⁱ</code>，StreamKV 在每个空间位置对帧特征求平均，得到 <code>fₛⁱ=(1/Tⁱ)Σₜfₜⁱ</code>。它和原帧一起编码，生成 summary KV block。段内普通帧 KV 可以被丢弃，但 summary KV 总是写入 Bank；这使每个段即使在激进压缩后仍保留一条可用于检索的段级表征。对于 VLA 历史记忆，这很接近“事件卡片摘要永远保留、细节按预算淘汰”的做法。</p>
+<p>对第 \(i\) 个段 \(S^i=[f_t^i]_{t=1}^{T_i}\)，StreamKV 在每个空间位置对帧特征求平均，得到 \(f_s^i=\frac{1}{T_i}\sum_{t=1}^{T_i}f_t^i\)。它和原帧一起编码，生成 summary KV block。段内普通帧 KV 可以被丢弃，但 summary KV 总是写入 Bank；这使每个段即使在激进压缩后仍保留一条可用于检索的段级表征。对于 VLA 历史记忆，这很接近“事件卡片摘要永远保留、细节按预算淘汰”的做法。</p>
 <h3>3.4 Unified Layer-Adaptive KV Selection：一个模块服务压缩和检索</h3>
-<p>每个 frame-level KV block 先把所有 patch key 平均为代表向量 <code>rₘⁱ</code>。在第 <code>l</code> 层，模块对候选代表向量与选择条件向量 <code>cˡ</code> 计算余弦相似度，再在全层总预算 <code>N</code> 下选择每层的 Top-K。区别于每层均分预算，作者先对层内相似度 softmax 归一化并排序；随后二分搜索全局累计阈值 <code>p</code>，为每一层找到最短前缀 <code>Kˡ</code>，使所有层的保留数之和等于 <code>N</code>。信息分布更集中、前缀累计更快的层因此获得不同于其他层的预算。</p>
+<p>每个 frame-level KV block 先把所有 patch key 平均为代表向量 \(r_{m}^{i}\)。在第 \(l\) 层，模块对候选代表向量与选择条件向量 \(c^{l}\) 计算余弦相似度，再在全层总预算 \(N\) 下选择每层的 Top-K。区别于每层均分预算，作者先对层内相似度 softmax 归一化并排序；随后二分搜索全局累计阈值 \(p\)，为每一层找到最短前缀 \(K^{l}\)，使所有层的保留数之和等于 \(N\)。信息分布更集中、前缀累计更快的层因此获得不同于其他层的预算。</p>
 <h3>3.5 先用 guidance prompt 压缩，再用 question 检索</h3>
-<p>压缩时，选择条件 <code>cˡ</code> 是 guidance prompt 各 token 的层内 query 向量均值。它寻找的是段内代表“人、物、地点、关键动作、时序因果、场景变化和事实细节”的 KV；每段的总预算为 <code>ceil((1−θ)Tⁱ)×L</code>，其中 <code>θ</code> 是压缩比例、<code>L</code> 是层数。问答时算法不变，但把选择条件换成用户问题向量、候选范围扩至整个 KV Bank，并以每层平均检索 block 数设定新预算。这样同一套 SelectKV 分别承担无问题时的写入压缩和有问题时的读取检索。</p>
+<p>压缩时，选择条件 \(c^{l}\) 是 guidance prompt 各 token 的层内 query 向量均值。它寻找的是段内代表“人、物、地点、关键动作、时序因果、场景变化和事实细节”的 KV；每段的总预算为 \(\operatorname{ceil}((1 - \theta )T^{i}) \times L\)，其中 \(\theta\) 是压缩比例、\(L\) 是层数。问答时算法不变，但把选择条件换成用户问题向量、候选范围扩至整个 KV Bank，并以每层平均检索 block 数设定新预算。这样同一套 SelectKV 分别承担无问题时的写入压缩和有问题时的读取检索。</p>
 <h3>3.6 局部 RoPE 与检索后位置重编号</h3>
 <p>长序列中相距很远的 RoPE 位置会削弱 attention。视频编码阶段，RoPE 只在局部滑窗内编号；问答阶段，检索出的 KV 被视为连续 token，并以相对位置重设 RoPE。这不是额外记忆内容，而是让跨长时间检索后的 KV 在 attention 中仍保持可用的几何关系。</p>
 

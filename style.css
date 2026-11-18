@@ -70,6 +70,7 @@ header p a{color:#d9f4f6;text-decoration:underline;text-underline-offset:2px}
 .wide th:first-child,.wide td:first-child{white-space:nowrap}
 
 /* MathJax 3 */
-mjx-container[jax="CHTML"]{font-size:1.02em;color:inherit}
-mjx-container[jax="CHTML"][display="true"]{margin:14px 0;overflow-x:auto;overflow-y:hidden;max-width:100%;padding:2px 0}
-mjx-container[jax="CHTML"]:not([display="true"]){vertical-align:baseline}
+mjx-container[jax="SVG"]{font-size:1em;color:inherit;background:transparent}
+mjx-container[jax="SVG"][display="true"]{display:block;max-width:100%;margin:14px 0;padding:3px 0;overflow-x:auto;overflow-y:hidden}
+mjx-container[jax="SVG"]:not([display="true"]){vertical-align:baseline;padding:0;background:transparent}
+@media(max-width:650px){mjx-container[jax="SVG"][display="true"]{font-size:.92em}}

@@ -5,14 +5,8 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>TVCache｜专题二 · KV Cache 与事件记忆</title>
 <link rel="stylesheet" href="../../style.css">
-<script>
-window.MathJax = {
-  tex: { inlineMath: [['\\(', '\\)']], displayMath: [['\\[', '\\]']], processEscapes: true },
-  options: { skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code'] },
-  chtml: { displayAlign: 'center' }
-};
-</script>
-<script defer src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+<script src="../../mathjax-config.js"></script>
+<script defer src="../../vendor/mathjax/tex-svg.js"></script>
 </head>
 <body>
 <header>
@@ -51,7 +45,7 @@ window.MathJax = {
 
 <h2 id="summary">1 核心摘要</h2>
 <p>作者的问题设定一句话：<strong>已有的 VLA token caching 没用上 VLA 的归纳偏置——文本语义会引导视觉定位</strong>。VLA-Cache 已把「相似度提名静态 token → 注意力剔除任务相关 token → 按层调复用比例」跑通，但对两件事一视同仁：所有 head 平均、所有层同等参与决策。</p>
-<p><strong>token 级</strong>：不同 head 的跨模态行为差别很大，有的锐利指向交互区域，有的把注意力铺在背景上，直接平均会稀释信息性响应，选出的「任务相关 token」偏向背景（spatial misalignment）。做法是按每个 head 的「文本→视觉注意力份额 \(I\) 减去该分布的空间熵 \(H\)」打分（\(S_{\text{head}} = 0.5I - 0.5H\)），取高分 head 组成 \(M_l\)，只在这批 head 上平均得到每个视觉 token 的相关性 \(V_j\)，\(V_j &gt; \tau_{\text{task}}\) 进 \(P_{\text{task}}\)，可复用集合 \(P_{\text{reuse}} = P_{\text{static}} \setminus P_{\text{task}}\)。</p>
+<p><strong>token 级</strong>：不同 head 的跨模态行为差别很大，有的锐利指向交互区域，有的把注意力铺在背景上，直接平均会稀释信息性响应，选出的「任务相关 token」偏向背景（spatial misalignment）。做法是按每个 head 的「文本→视觉注意力份额 \(I\) 减去该分布的空间熵 \(H\)」打分（\(S_{\text{head}} = 0.5I - 0.5H\)），取高分 head 组成 \(M_l\)，只在这批 head 上平均得到每个视觉 token 的相关性 \(V_j\)，\(V_j \gt  \tau_{\text{task}}\) 进 \(P_{\text{task}}\)，可复用集合 \(P_{\text{reuse}} = P_{\text{static}} \setminus P_{\text{task}}\)。</p>
 <p><strong>层 级</strong>：跨模态表征在深度上不均匀，在「还没稳定」的层复用会把噪声传给下游，等稳定了再复用又白算前面几层（depth mismatch）。做法是逐层算文本→视觉注意力的熵 \(E^{(l)}\)，min-max 归一化后取 \(R^{(l)} = 1 - \bar{E}^{(l)}\)，在 \(K=4\)、最小层距 \(d_{\min}=2\) 下间隔贪心选 4 层，再按选中顺序分配单调递增的保留率 \(\gamma = [0.5, 0.65, 0.8, 1.0]\)，末层强制 100%。</p>
 <p>四个 backbone、两个基准共用同一组常数，不做模型级或基准级调参——这就是「training-free」的实际含义：不训练、不校准，只在前向时读注意力矩阵。<strong>判定：</strong>改的不是机制骨架，而是两个统计口径：head 平均换成分位数筛选，「按层熵连续调比例」换成「选 4 层 + 层距 + 单调 \(\gamma\)」。预算只够一半时先做选层。</p>
 
@@ -66,7 +60,7 @@ window.MathJax = {
 
 <h2 id="method">4 方法拆解</h2>
 <img class="figure" src="figures/fig3-framework.png" alt="TVCache 框架总图：上支为时间相似度与任务相关 token 选择，下支为 head 过滤与复用层选择">
-<p class="caption">Figure 3：上半支为两帧观测→时间相似度→任务相关 token 选择→静态/动态集合→在复用层装载 KV。下半支左：从 VLA decoder 取文本-视觉注意力，按 head 算 \(I\)、\(H\)，保留低熵 head 再求均值；下支右：逐层算对齐稳定性，违反层距的层被跳过。</p>
+<p class="caption">Figure 3：上部从时间相似度与任务相关 token 得到复用集合；下部估计注意力头重要性和逐层对齐稳定性。</p>
 
 <h3>4.1 输入、信号与两段串联</h3>
 <p>输入是当前观测 \(I^t\)、上一步观测 \(I^{(t-1)}\)、语言指令，以及上一控制步留下的 KV 缓存。每步顺序做四件事：<strong>(a)</strong> 同名 patch 求余弦相似度，\(\text{Sim} \ge \tau\) 的取 Top-k 得 \(P_{\text{static}}\)；<strong>(b)</strong> 取跨模态注意力子张量，算 head 分数并筛 head，得 \(V_j\)，超过 \(\tau_{\text{task}}\) 的进 \(P_{\text{task}}\)；<strong>(c)</strong> 逐层算熵，选出 \(K_{\text{reuse}}\)；<strong>(d)</strong> 在 \(K_{\text{reuse}}\) 每层按 \(\gamma^{(l)}\) 截取并直接装载这批 token 的 K/V，跳过它们的投影与注意力计算。(a) 只提名、(b) 才否决。</p>
@@ -89,7 +83,7 @@ window.MathJax = {
 <p><strong>指令切换时缓存怎么办，论文没有回答。</strong>正文与公式只形式化了视觉 patch 的 \(P_{\text{reuse}}\)；文本 token 的 K/V 是否复用、换指令后如何失效，只有一句「对不变的指令复用历史缓存」。可推的理由是视觉 token 在文本之前、其 KV 由因果掩码决定、不含文本信息；但 \(V_j\) 与 \(P_{\text{task}}\) 会随新指令重算，同一批静态 token 可能突然被判为任务相关，而它在旧指令下已被复用若干步。这属于实现决定，不是论文结论。</p>
 
 <h2 id="evidence">5 证据与实验</h2>
-<p>四个 backbone：OpenVLA-OFT、BitVLA、π0.5、VLA-Adapter。仿真为 LIBERO（四个 suite，每 suite 500 episodes）与 CALVIN（仅 VLA-Adapter，ABC→D）；真机 Franka Research 3 加双相机，LoRA 微调 OpenVLA-OFT，四任务各 100 条示范、50 次评测。基线 FastV、SparseVLM、DivPrune、VLA-Cache，同保留率比较，延迟在单张 RTX 4090、batch=1、BF16 下测。</p>
+<p>四个 backbone：OpenVLA-OFT、BitVLA、\(\pi_{0.5}\)、VLA-Adapter。仿真为 LIBERO（四个 suite，每 suite 500 episodes）与 CALVIN（仅 VLA-Adapter，ABC→D）；真机 Franka Research 3 加双相机，LoRA 微调 OpenVLA-OFT，四任务各 100 条示范、50 次评测。基线 FastV、SparseVLM、DivPrune、VLA-Cache，同保留率比较，延迟在单张 RTX 4090、batch=1、BF16 下测。</p>
 <div class="wide">
 <table>
 <tr><th>模型 / 保留率</th><th>Vanilla SR</th><th>VLA-Cache SR</th><th>TVCache SR</th><th>相对 VLA-Cache</th></tr>
@@ -99,13 +93,13 @@ window.MathJax = {
 <tr><td>BitVLA 50%</td><td>93.90</td><td>93.90</td><td>94.90</td><td>+1.00</td></tr>
 <tr><td>BitVLA 25%</td><td>93.90</td><td>93.00</td><td>94.75</td><td>+1.75</td></tr>
 <tr><td>BitVLA 12.5%</td><td>93.90</td><td>92.50</td><td>93.90</td><td>+1.40</td></tr>
-<tr><td>π0.5 50%</td><td>96.30</td><td>94.20</td><td>95.85</td><td>+1.65</td></tr>
-<tr><td>π0.5 25%</td><td>96.30</td><td>86.85</td><td>93.90</td><td>+7.05</td></tr>
+<tr><td>\(\pi_{0.5}\) 50%</td><td>96.30</td><td>94.20</td><td>95.85</td><td>+1.65</td></tr>
+<tr><td>\(\pi_{0.5}\) 25%</td><td>96.30</td><td>86.85</td><td>93.90</td><td>+7.05</td></tr>
 <tr><td>VLA-Adapter 50%</td><td>96.70</td><td>77.35</td><td>79.95</td><td>+2.60</td></tr>
 <tr><td>VLA-Adapter 25%</td><td>96.70</td><td>48.35</td><td>54.40</td><td>+6.05</td></tr>
 </table>
 </div>
-<p class="caption">LIBERO 四个 suite 的平均成功率（%）。π0.5 未报告 12.5%，VLA-Adapter 只测了 50% 与 25%。</p>
+<p class="caption">Table II：LIBERO 四个套件的平均成功率（%），比较 \(\pi_{0.5}\) 与 VLA-Adapter 在不同保留率下的结果。</p>
 <p><strong>效率（OpenVLA-OFT，12.5%）。</strong>Vanilla 4.0139 T / 95.87 ms / 10.43 Hz；VLA-Cache 1.6463 T / 66.54 ms / 15.03 Hz；TVCache 1.6414 T（<b>2.45×</b>）/ 66.51 ms（1.44×）/ 15.04 Hz。三者 FLOPs 与延迟几乎相同，差别只在成功率——主张的是同成本下更好，不是更快。BitVLA 12.5% 延迟只加速 1.11×（FLOPs 2.08×），因为路由开销近似常数而视觉编码、动作解码没一起变小；CALVIN 上 VLA-Adapter 25% 从 48.06% 到 58.24%，FLOPs 1.92×，43.72 ms / 22.87 Hz。</p>
 <div class="wide">
 <table>
@@ -116,10 +110,10 @@ window.MathJax = {
 <tr><td>两者合用</td><td>97.55</td><td>95.55</td><td><b>84.00</b></td></tr>
 </table>
 </div>
-<p class="caption">消融：成功率（%），每行是在 VLA-Cache 之上依次加入机制。</p>
+<p class="caption">消融表：成功率单位为百分比，逐行比较加入各项缓存机制后的结果。</p>
 <p><strong>消融的读法。</strong>12.5% 下 +14.50 pp 里 +12.70 来自选层，head 过滤只有 +1.40；50% 时两者几乎打平（+0.35 与 +0.15），组合超出线性叠加的部分只有 0.4。真机正文只给三个数：SetKettle 50% 时 94%（与全量持平）、12.5% 时 87%、HangCup 50% 时 82%，四任务曲线没有对应数值表。</p>
 <img class="figure" src="figures/fig4-attention.png" alt="VLA-Cache 与 TVCache 的跨模态注意力热力图对比">
-<p class="caption">Figure 5：左右两组为两个场景，每组左为 VLA-Cache、右为 TVCache；红色越深表示文本对视觉 token 的注意力越强。TVCache 的响应集中在夹爪与目标物，VLA-Cache 背景散点更多。</p>
+<p class="caption">Figure 5：两组场景分别比较 VLA-Cache 与 TVCache 的文本到视觉注意力；颜色越深表示权重越高。</p>
 <p><strong>能否横向比。</strong>同 backbone、同保留率、同 FLOPs 口径内自洽（4.0139 / 1.6414 = 2.45）。跨 backbone 不可比：\(K=4\) 在层数不同的模型上覆盖比例不同，FLOPs 降幅从 2.08× 波动到 2.45×。跨论文也不可比，VLA-Cache 的数字是本文重跑的，引用时应注明。</p>
 
 <h2 id="fit">6 优点、局限与 VLA 适配</h2>
@@ -138,14 +132,14 @@ window.MathJax = {
 
 <h2 id="repro">7 落地清单</h2>
 <ul class="checklist">
-<li><b>先对齐口径。</b>同一 backbone 重跑 VLA-Cache 的 12.5%，确认 \(k\) 与保留率的换算；论文未给 \(\tau\)，从 0.9 起扫，以「复现值与 69.50% 相差 ≤1 pp」为通过条件。</li>
+<li><b>先对齐口径。</b>同一 backbone 重跑 VLA-Cache 的 12.5%，确认 \(k\) 与保留率的换算；论文未给 \(\tau\)，从 0.9 起扫，以「复现值与 69.50% 相差 \(\le1\) pp」为通过条件。</li>
 <li><b>head 分数先做量级检查。</b>记录前 20 步的 \(I\) 与 \(H\)；若 \(H\) 中位数比 \(I\) 大一个数量级，先试 \(H / \log L_v\) 归一化再按 0.5/0.5 加权，与原始写法 A/B；\(|M_l|\) 取 \(N_H/4\) 并记录是否稳定。</li>
 <li><b>层选择打印出来看。</b>输出每个模型选中的 4 个层号；若全落在后半段，\(\gamma\) 按选中顺序赋值会让复用层都接近 1.0，收益低于 FLOPs 预期，改按绝对深度赋值。</li>
-<li><b>选层做成低频统计。</b>\(R^{(l)}\) 从每步改为每 episode 或每 10 步，验收：开销从 2.84 ms 降到 ≤1.9 ms，成功率变化 ≤0.3 pp。</li>
+<li><b>选层做成低频统计。</b>\(R^{(l)}\) 从每步改为每 episode 或每 10 步，验收：开销从 2.84 ms 降到 \(\le1.9\) ms，成功率变化 \(\le0.3\) pp。</li>
 <li><b>指令切换单独测。</b>构造含 2–3 次切换的 episode，做「切换后全量重算一帧」与「不重算」的 A/B；差距 &gt;2 pp 说明必须加显式 flush。</li>
 </ul>
 <div class="srcbox">
-<p><b>来源：</b>Qianer Li, Chengjie Zhang, Jingwen Chen, Zanjia Tong, Jiyuan Zhang, Hong Zhang, "Text-Vision Synergistic Token Caching: A Training-Free Framework for Efficient Vision-Language-Action Inference", arXiv:2609.34319（2026-09 预印本）。数字取自 Table I（OpenVLA-OFT / BitVLA on LIBERO）、Table II（π0.5 / VLA-Adapter on LIBERO）、Table III（运行时开销分解）、Table IV（消融）、第 4 节 CALVIN 段与 §Complexity Analysis；方法公式取自第 III 节 (1)–(4)。</p>
+<p><b>来源：</b>Qianer Li, Chengjie Zhang, Jingwen Chen, Zanjia Tong, Jiyuan Zhang, Hong Zhang, "Text-Vision Synergistic Token Caching: A Training-Free Framework for Efficient Vision-Language-Action Inference", arXiv:2609.34319（2026-09 预印本）。数字取自 Table I（OpenVLA-OFT / BitVLA on LIBERO）、Table II（\(\pi_{0.5}\) / VLA-Adapter on LIBERO）、Table III（运行时开销分解）、Table IV（消融）、第 4 节 CALVIN 段与 §Complexity Analysis；方法公式取自第 III 节 (1)–(4)。</p>
 </div>
 <p class="pagefoot">相关页面：<a href="../vla-cache/index.html">VLA-Cache · 跨控制步 KV 复用</a> · <a href="../gated-vla-cache/index.html">Gated VLA-Cache · 置信度门控</a> · <a href="../kv-cache-event-memory/index.html">返回专题二</a></p>
 </article>

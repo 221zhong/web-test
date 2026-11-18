@@ -5,6 +5,8 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>VLA-Cache｜论文精读</title>
   <link rel="stylesheet" href="../../style.css">
+<script src="../../mathjax-config.js"></script>
+<script defer src="../../vendor/mathjax/tex-svg.js"></script>
 </head>
 <body>
   <header><div class="wrap">
@@ -29,28 +31,28 @@
     <h2 id="motivation">2. 研究动机</h2>
     <h3>闭环控制使相邻观测冗余，但不能简单删 token</h3>
     <p>VLA 的输入不是独立图像，而是随控制循环到来的相邻观测。背景、桌面和多数物体在相邻帧之间不变，因此重新计算这些 token 的 K/V 是冗余的。另一方面，机器人任务对细微状态十分敏感：夹爪、目标物或接触区域可能像素变化很小，却会改变动作。论文强调，视觉静止不等于对任务不重要。</p>
-    <img class="figure" src="figures/fig1-motivation.png" alt="VLA-Cache 原论文动机图">
-    <p class="caption">原论文动机图，来自 arXiv LaTeX 源码 <code>fig/motivation.pdf</code>；网页展示版本为本地 PNG，原始 PDF 同目录保留。图中说明静态视觉 token 可跨控制步复用 KV。</p>
+    <img class="figure" src="figures/fig1-motivation.png" alt="VLA-Cache 动机图">
+    <p class="caption">Figure 1：相邻控制步的静态视觉 token 复用 KV，动态区域仍重新计算。</p>
     <h3>已有加速策略与 VLA 的错位</h3>
     <p>量化、剪枝、早退或单帧 token sparsification 通常降低整个模型或单帧上下文的计算，却没有利用机器人视频流的跨帧重复。它们还可能删除空间上很小、但操控上关键的区域。VLA-Cache 的切入点是把缓存选择放在“当前帧相对上一帧”的变化上，并用模型自身注意力再做任务相关性保险。</p>
     <h3>与历史关键事件检测的关系</h3>
     <p>这篇论文的目标是推理加速，不是保存长期语义记忆；它复用的是上一帧的中间 KV，而非把事件写入可检索的 episode memory。不过，它提供了一个关键接口：事件检测器可将 token 的命运显式划分为 <code>reuse</code>、<code>refresh</code> 与 <code>commit</code>。VLA-Cache 研究前两类，而本课题可以在关键状态转移时增加第三类长期写入。</p>
 
     <h2 id="method">3. 方法论</h2>
-    <img class="figure" src="figures/fig2-method.png" alt="VLA-Cache 原论文 Fig. 2 方法图">
-    <p class="caption">原论文 Fig. 2，来自 arXiv LaTeX 源码 <code>fig/method.pdf</code>。左：Dynamic Token Selection；右：Adaptive Token Caching。原始 PDF 同目录为 <code>method-original.pdf</code>。</p>
+    <img class="figure" src="figures/fig2-method.png" alt="VLA-Cache  Fig. 2 方法图">
+    <p class="caption">Figure 2：左侧选择需更新的动态 token，右侧按变化程度调整缓存复用。</p>
     <h3>3.1 从标准 KV cache 到跨帧视觉 KV</h3>
-    <p>标准自回归 Transformer 对输入 <code>X</code> 计算 <code>Q=XW<sub>Q</sub></code>、<code>K=XW<sub>K</sub></code>、<code>V=XW<sub>V</sub></code>，以 <code>Softmax(QK<sup>⊤</sup>/√d)V</code> 完成注意力。普通 decoding 会把新 token 的 K/V append 到同一请求的 cache，但 VLA 在每个控制步通常重新送入视觉 token。VLA-Cache 将前一时刻视觉 token 的 K/V 视为可选的跨帧 cache：只有被判定为可复用的 token 才沿用 <code>K<sub>t−1</sub>,V<sub>t−1</sub></code>；其余 token 用当前表征重新计算。</p>
+    <p>标准自回归 Transformer 对输入 \(X\) 计算 \(Q=XW_{Q}\)、\(K=XW_{K}\)、\(V=XW_{V}\)，以 \(\operatorname{Softmax}(QK^{ \top }/ \sqrt d)V\) 完成注意力。普通 decoding 会把新 token 的 K/V append 到同一请求的 cache，但 VLA 在每个控制步通常重新送入视觉 token。VLA-Cache 将前一时刻视觉 token 的 K/V 视为可选的跨帧 cache：只有被判定为可复用的 token 才沿用 \(K_{t - 1},V_{t - 1}\)；其余 token 用当前表征重新计算。</p>
     <h3>3.2 Dynamic Token Selection：先以像素相似度提出静态候选</h3>
-    <p>当前图像与前一帧都被切为非重叠 patch。对应 patch <code>P<sub>t</sub><sup>i,j</sup></code> 与 <code>P<sub>t−1</sub><sup>i,j</sup></code> 的余弦相似度为：</p>
-    <p><code>Sim(P<sub>t</sub><sup>i,j</sup>, P<sub>t−1</sub><sup>i,j</sup>) = (P<sub>t</sub><sup>i,j</sup> · P<sub>t−1</sub><sup>i,j</sup>) / (||P<sub>t</sub><sup>i,j</sup>||₂ ||P<sub>t−1</sub><sup>i,j</sup>||₂)</code>。</p>
-    <p>相似度超过阈值 <code>τ</code> 的 patch 进入候选，再经 Top-k 保留最稳定 token，形成 <code>P<sub>static</sub></code>。这是廉价的运动/外观变化门，但它只回答“是否看起来不变”，不能判断该区域是否仍是本步动作的关键证据。</p>
+    <p>当前图像与前一帧都被切为非重叠 patch。对应 patch \(P_{t}^{i,j}\) 与 \(P_{t - 1}^{i,j}\) 的余弦相似度为：</p>
+    <p>\(\operatorname{Sim}(P_{t}^{i,j}, P_{t - 1}^{i,j}) = (P_{t}^{i,j} \cdot P_{t - 1}^{i,j}) / (\|P_{t}^{i,j}\|_{2} \|P_{t - 1}^{i,j}\|_{2})\)。</p>
+    <p>相似度超过阈值 \(\tau\) 的 patch 进入候选，再经 Top-k 保留最稳定 token，形成 \(P_{static}\)。这是廉价的运动/外观变化门，但它只回答“是否看起来不变”，不能判断该区域是否仍是本步动作的关键证据。</p>
     <h3>3.3 Evicting Task-Relevant Tokens：从静态候选中剔除语义关键区域</h3>
-    <p>论文从 decoder attention 中取 text-to-vision 子矩阵，在 head 维平均得到每个视觉 token 的注意力，再对选定层平均，形成任务相关性分数 <code>S<sub>task-relevance</sub></code>。高于阈值 <code>τ<sub>task</sub></code> 的 token 构成 <code>P<sub>task-relevant</sub></code>；最终可复用集合是：</p>
-    <p><code>P<sub>reuse</sub> = P<sub>static</sub> \ P<sub>task-relevant</sub></code>。</p>
+    <p>论文从 decoder attention 中取 text-to-vision 子矩阵，在 head 维平均得到每个视觉 token 的注意力，再对选定层平均，形成任务相关性分数 \(S_{task-relevance}\)。高于阈值 \(\tau _{task}\) 的 token 构成 \(P_{task-relevant}\)；最终可复用集合是：</p>
+    <p>\(P_{reuse} = P_{static} \setminus P_{task-relevant}\)。</p>
     <p>这一步对应论文最重要的安全机制。Table 1 显示，仅按静态 token 复用会使 LIBERO-Spatial 的 OpenVLA 成功率从 84.4% 降到 74.2%；剔除任务相关 token 后恢复到 82.6%。因此，像素相似性可作为候选信号，但不能独立承担缓存或记忆更新决策。</p>
     <h3>3.4 Adaptive Token Caching：不同 decoder 层采用不同复用率</h3>
-    <p>论文观察到 attention 在各 decoder layer 的集中程度不同。它以 attention entropy 衡量层内分布，并依据相邻层 entropy 的变化为每层设定复用率 <code>α<sup>l</sup></code>。集中、敏感的层保留更多 current-step 更新，较分散的层可复用更多静态 cache。对每层每个 token：若在该层被选入复用子集，则令 <code>K<sub>t</sub><sup>l</sup>(i)=K<sub>t−1</sub><sup>l</sup>(i)</code>、<code>V<sub>t</sub><sup>l</sup>(i)=V<sub>t−1</sub><sup>l</sup>(i)</code>；否则从当前 <code>H<sub>t</sub><sup>l</sup>(i)</code> 经投影重新计算 K/V。</p>
+    <p>论文观察到 attention 在各 decoder layer 的集中程度不同。它以 attention entropy 衡量层内分布，并依据相邻层 entropy 的变化为每层设定复用率 \(\alpha ^{l}\)。集中、敏感的层保留更多 current-step 更新，较分散的层可复用更多静态 cache。对每层每个 token：若在该层被选入复用子集，则令 \(K_{t}^{l}(i)=K_{t - 1}^{l}(i)\)、\(V_{t}^{l}(i)=V_{t - 1}^{l}(i)\)；否则从当前 \(H_{t}^{l}(i)\) 经投影重新计算 K/V。</p>
     <h3>3.5 训练与部署流程</h3>
     <p>VLA-Cache 是 training-free、plug-and-play 的推理时方法：模型在训练后保持冻结。每一控制步接收当前帧，利用前一帧与前一缓存选出可复用 token，更新各层 KV 后再生成动作。第一个控制步没有历史 cache，需完整 prefill；观察剧烈变化时，可复用 token 自然变少、加速收益下降。论文并没有把跨 episode KV 当长期记忆保存，也未声称其提供历史任务状态推理。</p>
 
@@ -83,7 +85,5 @@
       <li><a href="../vln-cache/index.html">VLN-Cache</a>：针对移动平台，位置对齐在视角位移下失效，改用动态感知的匹配与语义重检。</li>
     </ul>
 
-    <h2>图像来源与核验</h2>
-    <p>本页图像均来自 arXiv LaTeX 源码：<code>fig/motivation.pdf</code> 与 <code>fig/method.pdf</code>。网页使用由原 PDF 渲染的 PNG，并保留原始 PDF；已逐图检查，图中不含页面正文、页眉页脚、页码或 PDF 排版 caption。实验结果严格采用文字与 HTML 表格，没有实验图片。</p>
   </article></main>
 </body></html>

@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>OxyGen｜Unified KV Cache Management for VLA Inference</title>
 <link rel="stylesheet" href="../../style.css">
+<script src="../../mathjax-config.js"></script>
+<script defer src="../../vendor/mathjax/tex-svg.js"></script>
 </head>
 <body>
 <header><div class="wrap">
@@ -21,7 +23,7 @@
 
 <h2 id="summary">1. 核心摘要</h2>
 <p>OxyGen 关注的不是让 VLA 学到更强的视觉或控制策略，而是一个常被忽略的部署问题：同一机器人观测在同一个控制周期内，可能同时服务动作生成、语言交互和文本记忆构建。Mixture-of-Transformers（MoT）VLA 虽能用不同 expert 产生异质输出，但现有运行时仍让每个任务各自 prefill、各自维护 KV cache，导致共享观测被重复编码，并让有严格实时要求的动作解码与可以跨帧完成的语言解码争抢资源。</p>
-<p>论文将 KV cache 定义为跨 expert、跨帧的一等资源。其一，cross-task KV sharing 将一次共享 backbone prefill 产生的观测 KV 同时提供给 action expert 和 language expert；其二，cross-frame continuous batching 把尚未完成的语言请求跨控制周期持久化，在每帧固定 decoding budget 内联合推进。以 π0.5 为实现对象，OxyGen 在 RTX 4090 上同时达到超过 200 tokens/s 的语言吞吐和 70 Hz 动作频率，相对 isolated execution 最高加速 3.7 倍。</p>
+<p>论文将 KV cache 定义为跨 expert、跨帧的一等资源。其一，cross-task KV sharing 将一次共享 backbone prefill 产生的观测 KV 同时提供给 action expert 和 language expert；其二，cross-frame continuous batching 把尚未完成的语言请求跨控制周期持久化，在每帧固定 decoding budget 内联合推进。以 \(\pi_{0.5}\) 为实现对象，OxyGen 在 RTX 4090 上同时达到超过 200 tokens/s 的语言吞吐和 70 Hz 动作频率，相对 isolated execution 最高加速 3.7 倍。</p>
 
 <h2 id="motivation">2. 研究动机</h2>
 <h3>MoT 的模型结构并不自动带来多任务推理效率</h3>
@@ -33,28 +35,28 @@
 
 <h2 id="method">3. 方法论</h2>
 <img class="figure" src="figures/fig2-dataflow.png" alt="OxyGen 的统一 KV cache 数据流">
-<p class="caption">Figure 2：统一 KV cache manager 在一个控制周期内共享 prefill，并保存和推进跨帧语言请求的状态。</p>
+<p class="caption">Figure 2：统一 KV cache manager 在单个控制周期内共享观测 prefill，并保存跨帧语言请求的解码状态。</p>
 <h3>3.1 MoT VLA 的预填充与 expert 输出</h3>
-<p>在控制周期 <code>t</code>，观测 <code>oₜ</code> 包含当前视觉输入和语言指令。共享 VLM backbone <code>ΘVLM</code> 先执行 prefill，在每层产生 hidden states、keys 和 values；所有层的 <code>(Kₜ,l, Vₜ,l)</code> 组成观测缓存 <code>𝒦ₜ</code>。论文强调 <code>𝒦ₜ</code> 尚未绑定输出模态：action expert 可据此经扩散或 flow-matching 的 <code>S</code> 个去噪步生成 action chunk <code>Aₜ</code>，language expert 则可自回归地产生文本 token <code>yₜ</code>。</p>
-<p>形式上，论文将共享 prefill 写为 <code>{(hₜ,l,Kₜ,l,Vₜ,l)}ₗ₌₁ᴸ = ΘVLM(oₜ)</code>，并令 <code>𝒦ₜ={(Kₜ,l,Vₜ,l)}ₗ₌₁ᴸ</code>。两个 expert 的条件分布分别为 <code>pΘAct(Aₜ | 𝒦ₜ)</code> 与 <code>pΘLang(yₜ | 𝒦ₜ)</code>。这一区分很重要：OxyGen 没有让 action 和 language 强行共享输出 head，而是共享二者确实共同依赖的观测表示。</p>
+<p>在控制周期 \(t\)，观测 \(o_t\) 包含当前视觉输入和语言指令。共享 VLM backbone \(\Theta_{\mathrm{VLM}}\) 先执行 prefill，在每层产生 hidden states、keys 和 values；所有层的 \((K_{t,l},V_{t,l})\) 组成观测缓存 \(\mathcal{K}_t\)。论文强调 \(\mathcal{K}_t\) 尚未绑定输出模态：action expert 可据此经扩散或 flow-matching 的 \(S\) 个去噪步生成 action chunk \(A_t\)，language expert 则可自回归地产生文本 token \(y_t\)。</p>
+<p>形式上，论文将共享 prefill 写为 \(\{(h_{t,l},K_{t,l},V_{t,l})\}_{l=1}^{L}=\Theta_{\mathrm{VLM}}(o_t)\)，并令 \(\mathcal{K}_t=\{(K_{t,l},V_{t,l})\}_{l=1}^{L}\)。两个 expert 的条件分布分别为 \(p_{\Theta_{\mathrm{Act}}}(A_t\mid\mathcal{K}_t)\) 与 \(p_{\Theta_{\mathrm{Lang}}}(y_t\mid\mathcal{K}_t)\)。这一区分很重要：OxyGen 没有让 action 和 language 强行共享输出 head，而是共享二者确实共同依赖的观测表示。</p>
 <h3>3.2 Cross-task KV sharing：一次 prefill，多个 consumer</h3>
-<p>isolated execution 会为动作和语言任务分别运行 shared backbone，造成同一观测被多次编码。OxyGen 让 manager 在当前帧只生成一次 <code>𝒦ₜ</code>：action expert 读取其 prefill 部分完成去噪；language expert 则以同一 prefill 初始化自己的生成状态。共享的是静态观测 prefix，而 language 之后新增 token 的 KV 属于该语言请求自身，因此不会混淆 action 与语言的不同生成语义。</p>
+<p>isolated execution 会为动作和语言任务分别运行 shared backbone，造成同一观测被多次编码。OxyGen 让 manager 在当前帧只生成一次 \(\mathcal{K}_t\)：action expert 读取其 prefill 部分完成去噪；language expert 则以同一 prefill 初始化自己的生成状态。共享的是静态观测 prefix，而 language 之后新增 token 的 KV 属于该语言请求自身，因此不会混淆 action 与语言的不同生成语义。</p>
 <h3>3.3 可恢复的语言生成状态</h3>
-<p>每个未完成语言请求维护状态 <code>σₜ=(𝒦ₜ,yₜ,δₜ)</code>：缓存保存 prefill 及已解码 token 的 KV，<code>yₜ</code> 保存目前输出，<code>δₜ</code> 指示是否因 EOS 或最大长度而结束。manager 对请求状态提供 Store、Retrieve、Update、Remove，并将所有活跃请求组成集合 <code>R</code>。这使语言生成在帧末可以暂停，在下一控制周期无需重新 prefill 即可继续。</p>
+<p>每个未完成语言请求维护状态 \(\sigma _t=(\mathcal{K}_t,y_t,\delta _t)\)：缓存保存 prefill 及已解码 token 的 KV，\(y_t\) 保存目前输出，\(\delta _t\) 指示是否因 EOS 或最大长度而结束。manager 对请求状态提供 Store、Retrieve、Update、Remove，并将所有活跃请求组成集合 \(R\)。这使语言生成在帧末可以暂停，在下一控制周期无需重新 prefill 即可继续。</p>
 <h3>3.4 Cross-frame continuous batching：把 soft-deadline 工作分摊到多帧</h3>
 <img class="figure" src="figures/fig3-timeline.png" alt="OxyGen 的跨帧连续批处理时间线">
-<p class="caption">Figure 3：语言请求跨多个控制周期保留并合并批处理，动作路径仍遵守每帧 deadline。</p>
-<p>在每帧，当前帧产生的新请求加入活跃集合；manager 将所有未结束的 <code>σ</code> 沿 batch 维堆叠，并在该帧仅推进 <code>k</code> 个 decoding step。若每帧到来一个请求、同时有 <code>B</code> 个活跃请求，则稳态语言吞吐为 <code>τ=Bk/T</code>，动作频率为 <code>f=H/T</code>，其中 <code>T</code> 是帧延迟、<code>H</code> 是每帧输出动作数。系统优化目标为最大化 <code>τ</code>，约束 <code>f≥fmin</code>。较小 <code>k</code> 会让单个请求完成得更慢，却增加同时活跃的请求数并提高批处理摊销；论文实现使用固定 <code>k</code>，将配置选择留给部署时的 workload profiling。</p>
+<p class="caption">Figure 3：语言请求跨多个控制周期保留并合并批处理；动作路径仍按每帧截止时间执行。</p>
+<p>在每帧，当前帧产生的新请求加入活跃集合；manager 将所有未结束的 \(\sigma\) 沿 batch 维堆叠，并在该帧仅推进 \(k\) 个 decoding step。若每帧到来一个请求、同时有 \(B\) 个活跃请求，则稳态语言吞吐为 \(\tau =Bk/T\)，动作频率为 \(f=H/T\)，其中 \(T\) 是帧延迟、\(H\) 是每帧输出动作数。系统优化目标为最大化 \(\tau\)，约束 \(f\ge f_{\min}\)。较小 \(k\) 会让单个请求完成得更慢，却增加同时活跃的请求数并提高批处理摊销；论文实现使用固定 \(k\)，将配置选择留给部署时的 workload profiling。</p>
 <h3>3.5 面向历史记忆的含义</h3>
 <p>对于本课题，OxyGen 解决的是“已决定写一条文本/事件记忆后，如何不影响控制频率地生成它”，而不决定“是否应该写入”。事件检测模块可在确认关键状态转移时创建语言或结构化记忆请求；OxyGen 把该请求放入跨帧队列，使记忆构建利用动作执行期间的空隙。事件显著性仍应由 motion、appearance、gripper/contact 和 task phase 等信号决定。</p>
 
 <h2 id="exp">4. 实验与结果</h2>
-<p><b>设置。</b>作者以 π0.5 为主，运行于 RTX 4090 与 Jetson AGX Thor，并在 LIBERO、ALOHA、DROID 配置上比较 sequential isolated execution、parallel isolated execution 与 OxyGen。额外在 Xiaomi-Robotics-0、StarVLA 以及真实人形机器人上评估。核心指标为 action frequency、language throughput、frame latency，以及动作质量和资源效率。</p>
-<table><tr><th>证据</th><th>原文数值</th><th>解读</th></tr><tr><td>端到端动作/语言权衡</td><td>相同输出长度下相对 sequential isolated execution 提升 1.2–3.7×</td><td>共享 prefill 与跨帧批处理同时改善动作频率和聚合语言吞吐，而非以其一牺牲另一。</td></tr><tr><td>仅启用 KV sharing（RTX 4090、LIBERO、S=10、N=5）</td><td>frame latency 200.3 ms → 145.1 ms，1.4×</td><td>重复 prefill 是可独立消除的成本。</td></tr><tr><td>KV sharing 后再启用 batching（N=30, k=5）</td><td>469.3 ms → 175.8 ms，2.7×；21.3 Hz → 56.9 Hz</td><td>跨帧合批主要解决语言输出变长时的解码拖累。</td></tr><tr><td>真实机器人</td><td>isolated 1030 ms → OxyGen 393 ms</td><td>动作下发后语言解码可与物理执行重叠；这是部署链路而非纯合成 benchmark 的验证。</td></tr></table>
-<p>迁移实验中，论文在 <code>N=30,k=5</code> 下报告 Xiaomi-Robotics-0 和 Qwen3VL-PI_v3 分别为 3.23×、3.60×；当 <code>k=1</code> 时增加至 5.83×、6.64×。增加 action expert 数也会提高可消除的重复 prefill：三、四 expert 设置在 <code>N=30,k=5</code> 下达到 3.53×、3.69×。这些结果说明收益随可共享工作和跨帧 backlog 增加，而不是某个固定 VLA 的偶然实现细节。</p>
+<p><b>设置。</b>作者以 \(\pi_{0.5}\) 为主，运行于 RTX 4090 与 Jetson AGX Thor，并在 LIBERO、ALOHA、DROID 配置上比较 sequential isolated execution、parallel isolated execution 与 OxyGen。额外在 Xiaomi-Robotics-0、StarVLA 以及真实人形机器人上评估。核心指标为 action frequency、language throughput、frame latency，以及动作质量和资源效率。</p>
+<table><tr><th>证据</th><th>原文数值</th><th>解读</th></tr><tr><td>端到端动作/语言权衡</td><td>相同输出长度下相对 sequential isolated execution 提升 1.2–3.7\(\times\)</td><td>共享 prefill 与跨帧批处理同时改善动作频率和聚合语言吞吐，而非以其一牺牲另一。</td></tr><tr><td>仅启用 KV sharing（RTX 4090、LIBERO、\(S=10\)、\(N=5\)）</td><td>frame latency 200.3 ms → 145.1 ms，1.4\(\times\)</td><td>重复 prefill 是可独立消除的成本。</td></tr><tr><td>KV sharing 后再启用 batching（\(N=30\), \(k=5\)）</td><td>469.3 ms → 175.8 ms，2.7\(\times\)；21.3 Hz → 56.9 Hz</td><td>跨帧合批主要解决语言输出变长时的解码拖累。</td></tr><tr><td>真实机器人</td><td>isolated 1030 ms → OxyGen 393 ms</td><td>动作下发后语言解码可与物理执行重叠；这是部署链路而非纯合成 benchmark 的验证。</td></tr></table>
+<p>迁移实验中，论文在 \(N=30,k=5\) 下报告 Xiaomi-Robotics-0 和 Qwen3VL-PI_v3 分别为 3.23\(\times\)、3.60\(\times\)；当 \(k=1\) 时增加至 5.83\(\times\)、6.64\(\times\)。增加 action expert 数也会提高可消除的重复 prefill：三、四 expert 设置在 \(N=30,k=5\) 下达到 3.53\(\times\)、3.69\(\times\)。这些结果说明收益随可共享工作和跨帧 backlog 增加，而不是某个固定 VLA 的偶然实现细节。</p>
 
 <h2 id="limits">5. 优势与局限</h2>
-<table><tr><th>优势</th><th>局限与迁移注意点</th></tr><tr><td><ul><li>将共享观测的重复 prefill 与跨帧解码竞争分解为两个可验证的系统问题。</li><li>明确区分 action 的硬 deadline 与 language 的 soft deadline，适合机器人控制循环。</li><li>对 π0.5、多个 MoT backbone / expert 数与真实机器人均有运行时验证。</li></ul></td><td><ul><li>面向共享 backbone 的 MoT VLA；异构模型间 KV 能否直接转移不属于当前实证范围。</li><li>固定 per-frame decoding budget <code>k</code> 需要依据具体硬件和 workload 调参，单个语言请求的完成延迟可能上升。</li><li>系统并不判断记忆是否值得写入；错误或冗余事件仍会被高效地生成和保存。</li></ul></td></tr></table>
+<table><tr><th>优势</th><th>局限与迁移注意点</th></tr><tr><td><ul><li>将共享观测的重复 prefill 与跨帧解码竞争分解为两个可验证的系统问题。</li><li>明确区分 action 的硬 deadline 与 language 的 soft deadline，适合机器人控制循环。</li><li>对 \(\pi_{0.5}\)、多个 MoT backbone / expert 数与真实机器人均有运行时验证。</li></ul></td><td><ul><li>面向共享 backbone 的 MoT VLA；异构模型间 KV 能否直接转移不属于当前实证范围。</li><li>固定 per-frame decoding budget \(k\) 需要依据具体硬件和 workload 调参，单个语言请求的完成延迟可能上升。</li><li>系统并不判断记忆是否值得写入；错误或冗余事件仍会被高效地生成和保存。</li></ul></td></tr></table>
 
 <h2 id="conclusion">6. 总结</h2>
 <p>OxyGen 将 KV cache 从 transformer 的被动中间产物升级为多任务 embodied agent 的共享调度对象。cross-task sharing 解决共同观测的重复编码，cross-frame batching 则让可延后的语言任务不再阻塞高频控制。它为“控制、对话、事件记忆构建并行发生”的 VLA 提供了明确系统层模板。</p>

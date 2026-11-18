@@ -5,14 +5,8 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>VLN-Cache｜专题二 · KV Cache 与事件记忆</title>
 <link rel="stylesheet" href="../../style.css">
-<script>
-window.MathJax = {
-  tex: { inlineMath: [['\\(', '\\)']], displayMath: [['\\[', '\\]']], processEscapes: true },
-  options: { skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code'] },
-  chtml: { displayAlign: 'center' }
-};
-</script>
-<script defer src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+<script src="../../mathjax-config.js"></script>
+<script defer src="../../vendor/mathjax/tex-svg.js"></script>
 </head>
 <body>
 <header>
@@ -54,7 +48,7 @@ window.MathJax = {
 <p>VLN 把 VLM 当作每步前向一次的 planner：连续环境里走几十步，每步把 RGB-D 观测编码成视觉 token，产出下一个 waypoint。墙、地板、走廊在相邻帧几乎不变，跨帧缓存因此是最自然的加速候选——但这类方法隐含一个从未被检验的假设：<b>同一图像坐标在相邻帧看到的是同一块物理表面</b>。该假设以两种方式失效：</p>
 <ul>
 <li><b>视觉动态</b>：相机平移旋转让静止表面在图像坐标上整体位移。位置对齐会把 \([i,\, i+k]\) 的墙与 \([i+\delta,\, i+k+\delta]\) 的另一块表面对上，同时把只是位移、本可复用的 token 判为需重算。量化口径是「复用差」\(\Delta r\)（对齐减位置匹配相似度），<b>平均约 10.3%</b>，Exploration / Goal 阶段更大，Cruising 更小。修法是 <b>view-aligned remapping</b>：深度加内参反投影到 3D，乘相对位姿 \(T_{t\to t-1}\) 投回上一帧，再 \(3\times 3\) 邻域细化得到 \(\pi_{t}(i)\)。</li>
-<li><b>语义动态</b>：指令分段推进，客厅通过后不再是决策依据，背景里的沙发变成下一个地标。这类 token 外观不变但缓存已过期。量化口径是注意力 top-k 焦点集的 Jaccard 距离，同样阶段非均匀。修法是 <b>task-relevance saliency filter</b>：相关分 \(s > \tau_{\text{abs}}\) 或 \(|\Delta s| > \tau_{\Delta}\) 即<b>硬否决</b>复用。</li>
+<li><b>语义动态</b>：指令分段推进，客厅通过后不再是决策依据，背景里的沙发变成下一个地标。这类 token 外观不变但缓存已过期。量化口径是注意力 top-k 焦点集的 Jaccard 距离，同样阶段非均匀。修法是 <b>task-relevance saliency filter</b>：相关分 \(s \gt  \tau_{\text{abs}}\) 或 \(|\Delta s| \gt  \tau_{\Delta}\) 即<b>硬否决</b>复用。</li>
 </ul>
 <p>两信号乘性合成：</p>
 \[ m = m_{\text{vis}}\cdot(1 - m_{\text{sem}}) \]
@@ -63,7 +57,7 @@ window.MathJax = {
 
 <h2 id="stage">2 复用机制定位</h2>
 <div class="flowline"><span class="on">复用候选</span><span class="on">失效判定</span><span class="part">缓存粒度</span><span class="part">层与预算</span><span>动作接口</span><span>评测</span></div>
-<p>与 VLA-Cache 不同，这篇的主战场是<b>前半段</b>：谁有资格进入候选集（几何对应是否存在），以及何时必须作废（语义是否漂移）。判定三级串联：几何对应落在有效视场 → 重映射后余弦 \(> 0.85\) → 指令相关分越界（\(> 0.70\) 或单步变化 \(> 0.30\)）；前两级用 RGB-D 加位姿，第三级复用已有的 cross-attention。复用单位是单帧 \(M=196\) 个 token × \(L=28\) 层，每层各一份 K/V；失效<b>逐 token 局部</b>，语义门命中即全量重算该 token，没有整帧 flush，也无需重新 prefill。层预算 \(\rho^{\ell}\) 由该层 attention 熵线性折减。</p>
+<p>与 VLA-Cache 不同，这篇的主战场是<b>前半段</b>：谁有资格进入候选集（几何对应是否存在），以及何时必须作废（语义是否漂移）。判定三级串联：几何对应落在有效视场 → 重映射后余弦 \(\gt  0.85\) → 指令相关分越界（\(\gt  0.70\) 或单步变化 \(\gt  0.30\)）；前两级用 RGB-D 加位姿，第三级复用已有的 cross-attention。复用单位是单帧 \(M=196\) 个 token × \(L=28\) 层，每层各一份 K/V；失效<b>逐 token 局部</b>，语义门命中即全量重算该 token，没有整帧 flush，也无需重新 prefill。层预算 \(\rho^{\ell}\) 由该层 attention 熵线性折减。</p>
 
 <h2 id="problem">3 问题与动机</h2>
 <h3>3.1 三条前提，在移动平台上逐条塌掉</h3>
@@ -82,9 +76,9 @@ window.MathJax = {
 <p>输入是每个 token 的中心坐标 \(u_{t}^{(i)}\) 与深度 \(d_{t}^{(i)}\)，对应关系由一次投影往返给出：</p>
 \[\pi_{t}(i) = \mathcal{N}\Big(\Pi\big(T_{t\to t-1}\cdot\Pi^{-1}(u_{t}^{(i)},\, d_{t}^{(i)};\, K)\big)\Big)\]
 <p>\(\Pi^{-1}\) 用内参反投影成相机系 3D 点，\(T\) 变到上一帧，\(\Pi\) 投回像素平面，\(\mathcal{N}(\cdot)\) 在 \(3\times 3\) 邻域内细化，吸收投影像素落在离散 patch 网格之间的量化误差；\(k=3\) 即邻域半径，\(k=0\) 退化为位置对齐。缺深度或深度不可靠的 token 直接重算，加速上限被深度覆盖率卡着。</p>
-<p>投影成功不等于可复用：可能被遮挡、光照变化、有动态物体，因此再两级门，<b>同时满足</b>才 \(m_{\text{vis}}=1\)——\(\pi_{t}(i)\) 落在有效视场内，且重映射后余弦 \(> 0.85\)。</p>
+<p>投影成功不等于可复用：可能被遮挡、光照变化、有动态物体，因此再两级门，<b>同时满足</b>才 \(m_{\text{vis}}=1\)——\(\pi_{t}(i)\) 落在有效视场内，且重映射后余弦 \(\gt  0.85\)。</p>
 <h3>4.2 语义动态：双条件检测 + 硬否决</h3>
-<p>相关分 \(s_{t}^{(i)}\) 由视觉 token 对语言 query 的 cross-attention 聚合而来；<b>论文只说是「instruction-conditioned attention score」，未给归一化与聚合层公式</b>，此处无法照抄。命中任一条即 \(m_{\text{sem}}=1\) 强制刷新：\(s > \tau_{\text{abs}}\)（实验记 0.70）——当前就是决策依据，旧状态再相似也不够；\(|s_{t} - s_{t-1}| > \tau_{\Delta}\)（0.30）——捕捉「量值不大但正在跃迁」的过渡区，典型是子目标切换的瞬间。</p>
+<p>相关分 \(s_{t}^{(i)}\) 由视觉 token 对语言 query 的 cross-attention 聚合而来；<b>论文只说是「instruction-conditioned attention score」，未给归一化与聚合层公式</b>，此处无法照抄。命中任一条即 \(m_{\text{sem}}=1\) 强制刷新：\(s \gt  \tau_{\text{abs}}\)（实验记 0.70）——当前就是决策依据，旧状态再相似也不够；\(|s_{t} - s_{t-1}| \gt  \tau_{\Delta}\)（0.30）——捕捉「量值不大但正在跃迁」的过渡区，典型是子目标切换的瞬间。</p>
 <p>语义侧刻意做成<b>硬否决而非软惩罚</b>：视觉稳定只是必要条件，若用加权打分，高置信的视觉匹配会把关键刷新压下去。</p>
 <h3>4.3 跨帧 KV 拼接与层自适应预算</h3>
 <p>复用项从<b>对齐位置</b>取，刷新项用当前计算值：</p>
@@ -95,7 +89,7 @@ window.MathJax = {
 \[\rho^{\ell} = \mathrm{clip}\big(\rho_{\max} - \alpha H^{\ell},\ \rho_{\min},\ \rho_{\max}\big)\]
 <p>高熵层拿更小预算，低熵层逼近 0.90。\(\alpha\) 与 \(\rho_{\min}\) 的取值论文未给。</p>
 <img class="figure" src="figures/fig4.png" alt="VLN-Cache 双掩码融合与逐层复用预算">
-<p class="caption">Figure 4：左侧为视角位移下的可见性与相似度检查，得出 Vision Reuse Mask；左下为指令随阶段更新后由 cross-attention 得到的 Semantic Refresh Mask；右侧两掩码相乘，各层再按 \(\rho^{\ell}\) 决定复用多少格。</p>
+<p class="caption">Figure 4：视角对齐产生 Vision Reuse Mask，指令注意力产生 Semantic Refresh Mask；两者共同决定各层复用位置。</p>
 <h3>4.4 开销与在线边界</h3>
 <p>选择开销 \(O(M(D + k^{2} + L_{q}D))\)，与层数无关；节省的是每层 \(W_{K}/W_{V}\) 对全部视觉 token 的投影，约 \(4\rho LMDd_{\text{kv}}\)。以 InternVLA-N1（\(L=28,\ M=196,\ D=3584,\ d_{\text{kv}}=512\)）在 \(\rho\approx 0.31\) 下折算，每步省 <b>12.3 GFLOPs</b>，占总 attention FLOPs 的 <b>18.3%</b>；缓存放 HBM，每帧 <b>11.2 MB</b>。</p>
 <p>边界是<b>因果、单帧历史、白盒</b>：要求深度、内参、位姿与 attention 可见。仿真加开源模型成立，黑盒 API 加单目相机全不成立——这是它更难迁移的根本原因。</p>
@@ -124,7 +118,7 @@ window.MathJax = {
 </div>
 <p>任一模块去掉都掉点，「去掉视觉门」掉得最多（61.7，<b>低于不缓存的 64.3</b>，复用率虚高到 49%）——几何对应解决「配给谁」，视觉门解决「表面变了没」，不可互相替代。另有一处措辞不实：正文称去掉几何对齐后复用了「相当」比例，表中是 43% 对 31%；更准确的说法是多复用 12 个点，而且复用错了。超参敏感性只有 Fig. 8/9 的定性曲线，网格点未表格化。</p>
 <img class="figure" src="figures/fig2.png" alt="沿导航轨迹的视觉相似度与注意力焦点漂移">
-<p class="caption">Figure 2：沿一条导航轨迹的逐步曲线：左轴为跨帧相似度，View-Aligned（青）始终高于 Position-Wise（橙），两者间距即复用差；右轴为注意力焦点漂移率（绿），在 Exploration 与 Goal 阶段抬升。</p>
+<p class="caption">Figure 2：左轴比较 View-Aligned 与 Position-Wise 的跨帧相似度，右轴显示导航阶段的注意力焦点漂移率。</p>
 <p><b>指标口径提醒。</b>SR/SPL/NE/OS 衡量「是否到达、路径是否高效」，与操控的「抓取是否成功」不是同一类量：导航允许多次重规划，单步误差会被后续 waypoint 吸收；操控判定终局且不可逆。因此 1.52× / −1.2 SR <b>不能</b>与 VLA-Cache 的 LIBERO 数字同表比较。</p>
 
 <h2 id="fit">6 优点、局限与 VLA 适配</h2>

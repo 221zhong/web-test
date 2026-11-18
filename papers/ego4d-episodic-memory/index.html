@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Ego4D Episodic Memory｜专题一 · 历史关键事件检测</title>
 <link rel="stylesheet" href="../../style.css">
+<script src="../../mathjax-config.js"></script>
+<script defer src="../../vendor/mathjax/tex-svg.js"></script>
 </head>
 <body>
 <header>
@@ -64,7 +66,7 @@
 
 <h2 id="method">4. 方法拆解</h2>
 <img class="figure" src="figures/fig_episodic_queries.jpg" alt="Ego4D Episodic Memory 的三类查询示意：物体图查询、语言查询与活动片段查询分别对应视频时间轴上的不同区间">
-<p class="caption">原论文 Figure 7（Episodic Memory 的三类查询）：视觉查询给物体图像，语言查询给一句问句，片段查询给活动名称；三条时间轴分别标出期望返回的证据区间。该图为任务示意，不是实验结果图。</p>
+<p class="caption">Figure 7：视觉、语言和片段三类查询分别以物体图像、问句和活动名称为输入；时间轴标出各自期望返回的证据区间。</p>
 <h3>4.1 输入与时间表征</h3>
 <p>三类查询输入不同，都不对视频做预切割。NLQ 的输入是完整历史加一句自由语言，标注是答案可见或可推断的 <code>response window</code>；VQ 的输入是历史、query frame 和一张物体裁剪图，标注是 <code>response track</code>，即该物体最后一次出现期间的逐帧框；MQ 的输入是历史加一个活动名，标注是该活动在片段内的所有区间。NLQ 与 MQ 的时间单位是秒级起止，VQ 是帧级轨迹，三者不共享同一时间容差。原文未给出统一的标注误差容限，未在已核验的公开材料中确认。</p>
 <h3>4.2 关键机制</h3>
@@ -112,7 +114,6 @@
 </ul>
 <div class="srcbox">
 <p><b>来源：</b>arXiv abs <a href="https://arxiv.org/abs/2110.07058">2110.07058v3</a>（2022-03-11）；<a href="https://openaccess.thecvf.com/content/CVPR2022/html/Grauman_Ego4D_Around_the_World_in_3000_Hours_of_Egocentric_Video_CVPR_2022_paper.html">CVPR 2022 论文页</a>；<a href="https://ego4d-data.org/docs/benchmarks/episodic-memory/">官方基准文档</a>（访问于 2026-11-17）；<a href="https://github.com/EGO4D/episodic-memory">EGO4D/episodic-memory</a> 评测代码。数字出处为摘要、第 5.1 节与附录 F 的 Table 9–12、Figure 35–36。</p>
-<p><b>图像说明：</b>作者论文 Figure 7（Episodic Memory 的三类查询），本页使用已导出的 <code>figures/fig_episodic_queries.jpg</code>；原图为任务示意，不含实验结果。</p>
 </div>
 <p class="pagefoot">相关页面：<a href="../hierarchical-event-memory/index.html">Hierarchical Event Memory</a> · <a href="../kemo/index.html">KEMO 关键帧记忆</a> · <a href="../event-vstream/index.html">Event-VStream</a> · <a href="../../index.html">返回总站</a></p>
 </article>

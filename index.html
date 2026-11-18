@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>VLA 历史记忆｜论文精读站点</title>
 <link rel="stylesheet" href="style.css">
+<script src="mathjax-config.js"></script>
+<script defer src="vendor/mathjax/tex-svg.js"></script>
 </head>
 <body>
 <header>
@@ -177,7 +179,7 @@
 <h2>站点约定</h2>
 <div class="card">
 <p>新增工作请在 <code>papers/&lt;paper-slug&gt;/</code> 创建独立 <code>index.html</code> 与本地 <code>figures/</code>；导航页只新增入口与一行对比条目。精读页固定七节结构并使用共享 <code>style.css</code>，不引入内联样式与脚本。</p>
-<p>事实纪律：数字只写论文报告值，分开标注作者结论与本页分析；无法核验的细节写「未在已核验的公开材料中确认」，不做估算。每页正文 2000–3000 字，篇幅主要给方法，效果只留关键数字。方法图优先取作者原图；只有 PDF 排版图时按该 figure 的包围盒精确裁切（不含图注、正文、页眉页脚与相邻图表）。图注只写图里画了什么，形如「Figure N：…」，不交代来源与处理方式。</p>
+<p>事实纪律：数字只写论文报告值，分开标注作者结论与本页分析；无法核验的细节写「未在已核验的公开材料中确认」，不做估算。每页正文 2000–3000 字，篇幅主要给方法，效果只留关键数字。图注只描述图内内容，采用「Figure N：模块与流向 / 面板 (a)(b) / 坐标轴与读点」的形式，限 1–2 句、200 字以内；表注只写口径、单位和比较对象。</p>
 </div>
 
 <p class="pagefoot">在线入口：<a href="papers/index.html">专题一</a> · <a href="papers/kv-cache-event-memory/index.html">专题二</a> · <a href="papers/online-memory/index.html">专题三</a> ｜ 仓库：<a href="https://github.com/221zhong/web-test">221zhong/web-test</a></p>

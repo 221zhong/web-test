@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Event-VStream｜专题一 · 历史关键事件检测</title>
 <link rel="stylesheet" href="../../style.css">
+<script src="../../mathjax-config.js"></script>
+<script defer src="../../vendor/mathjax/tex-svg.js"></script>
 </head>
 <body>
 <header>
@@ -58,15 +60,15 @@
 </tr>
 <tr>
 <td>输入</td>
-<td>连续视频帧与逐帧视觉嵌入 <code>f_t</code>（L2 归一化），不使用未来帧</td>
+<td>连续视频帧与逐帧视觉嵌入 \(f_{t}\)（L2 归一化），不使用未来帧</td>
 </tr>
 <tr>
 <td>输出</td>
-<td>事件 token <code>E_k</code>、事件库 <code>M</code>、边界处的语言输出 <code>y_k</code></td>
+<td>事件 token \(E_{k}\)、事件库 \(M\)、边界处的语言输出 \(y_{k}\)</td>
 </tr>
 <tr>
 <td>交给下游</td>
-<td>归一化事件嵌入序列与检索接口 <code>Retrieve(M, E_k)</code></td>
+<td>归一化事件嵌入序列与检索接口 \(Retrieve(M, E_{k})\)</td>
 </tr>
 </table>
 
@@ -76,15 +78,15 @@
 
 <h2 id="method">4. 方法拆解</h2>
 <img class="figure" src="figures/fig2_architecture.png" alt="Event-VStream 事件驱动流式推理架构：逐帧编码后由运动、语义与预测三路线索打分，边界处聚合事件 token、更新事件记忆并调用语言模型">
-<p class="caption">图 2：事件驱动的流式推理主循环。原图 PDF 见 <code>figures/fig2_architecture.pdf</code>（对应作者 LaTeX 源码 <code>figs/Figure2_main.pdf</code>）。</p>
+<p class="caption">Figure 2：视频流依次经过事件检测、事件表征更新与记忆检索，再将当前事件和历史信息送入回答分支。</p>
 <h3>4.1 输入与时间表征</h3>
-<p>逐帧视觉编码 <code>f_t = Enc_v(x_t)</code>，所有嵌入做 L2 归一化。当前事件用一个运行表示 <code>f̄</code> 概括，按指数滑动平均更新：<code>f̄ ← (1-ρ)f̄ + ρf_t</code>。因此「当前事件」是历史嵌入的指数加权摘要，旧帧影响随 ρ 衰减，而不是固定窗口平均。这一形式决定了它的内存是常数级的，也让回看只可能发生在事件库层面。</p>
+<p>逐帧视觉编码 \(f_{t} = Enc_{v}(x_{t})\)，所有嵌入做 L2 归一化。当前事件用一个运行表示 \(\bar{f}\) 概括，按指数滑动平均更新：\(\bar{f} \leftarrow  (1-\rho )\bar{f} + \rho f_{t}\)。因此「当前事件」是历史嵌入的指数加权摘要，旧帧影响随 \(\rho\) 衰减，而不是固定窗口平均。这一形式决定了它的内存是常数级的，也让回看只可能发生在事件库层面。</p>
 <h3>4.2 关键机制</h3>
-<p>边界打分把三路信号线性组合后过 sigmoid：<code>E_t = w_sem(1-s_t) + w_mot·ñ_t + w_pred·c_t</code>，<code>p_t = σ(E_t)</code>，<code>b_t = 1[p_t &gt; τ_t]</code>。语义项 <code>s_t = cos(f_t, f̄)</code> 确认表示层面的真实转移，并压掉瞬时运动噪声；运动项取平均光流范数或帧差能量，滑窗 min-max 归一化为 <code>ñ_t</code>，负责提前预警；预测项 <code>ĉ_t = ||g_θ(f_{t-1}) - f_t||²</code> 用一个三层 MLP 估计「新帧还能否被当前状态解释」，该 MLP 以 next-embedding 自监督训练后冻结，只用前一帧，因此不窥视未来。</p>
-<p>阈值自适应于近期运动方差：<code>τ_t = τ_0(1 + η·Var(m_{t-w:t}))</code>，原文给出的取值为 <code>τ_0 = 0.96</code>、<code>η = 0.03</code>；画面抖动大时抬高门槛，避免把相机晃动当成事件。另有迟滞策略：距上一边界不足 <code>Δ_min</code> 的候选并入当前事件，超过 <code>Δ_max</code> 仍无边界的则发一次 keep-alive 更新，防止长时间沉默。</p>
-<p>边界触发后按顺序做三件事。把段内帧嵌入按时间衰减权重池化为事件 token：<code>E_k = Σ w_i f_i / Σ w_i</code>，<code>w_i ∝ exp(-|t_i - t_b|/σ)</code>；用 merge-or-append 更新记忆库，若 <code>cos(E_k, E_last) &gt; γ_mem</code> 则 <code>E_last ← (1-λ)E_last + λE_k</code>，否则追加新槽位；最后执行 <code>y_k = LM(E_k, Retrieve(M, E_k))</code>。非边界帧只更新 <code>f̄</code>，不产生任何文本。</p>
+<p>边界打分把三路信号线性组合后过 sigmoid：\(E_{t} = w_{sem}(1-s_{t}) + w_{mot}\cdot \tilde{n}_{t} + w_{pred}\cdot c_{t}\)，\(p_{t} = \sigma (E_{t})\)，\(b_{t} = 1[p_{t} \gt  \tau _{t}]\)。语义项 \(s_{t} = \operatorname{cos}(f_{t}, \bar{f})\) 确认表示层面的真实转移，并压掉瞬时运动噪声；运动项取平均光流范数或帧差能量，滑窗 min-max 归一化为 \(\tilde{n}_{t}\)，负责提前预警；预测项 \(\hat{c}_{t} = \lVert g_\theta (f_{t-1}) - f_{t}\rVert^{2}\) 用一个三层 MLP 估计「新帧还能否被当前状态解释」，该 MLP 以 next-embedding 自监督训练后冻结，只用前一帧，因此不窥视未来。</p>
+<p>阈值自适应于近期运动方差：\(\tau _{t} = \tau _{0}(1 + \eta \cdot Var(m_{t-w:t}))\)，原文给出的取值为 \(\tau _{0} = 0.96\)、\(\eta  = 0.03\)；画面抖动大时抬高门槛，避免把相机晃动当成事件。另有迟滞策略：距上一边界不足 \(\Delta _{min}\) 的候选并入当前事件，超过 \(\Delta _{max}\) 仍无边界的则发一次 keep-alive 更新，防止长时间沉默。</p>
+<p>边界触发后按顺序做三件事。把段内帧嵌入按时间衰减权重池化为事件 token：\(E_{k} = \sum  w_{i} f_{i} / \sum  w_{i}\)，\(w_{i} \propto  \operatorname{exp}(-|t_{i} - t_{b}|/\sigma )\)；用 merge-or-append 更新记忆库，若 \(\operatorname{cos}(E_{k}, E_{last}) \gt  \gamma _{mem}\) 则 \(E_{last} \leftarrow  (1-\lambda )E_{last} + \lambda E_{k}\)，否则追加新槽位；最后执行 \(y_{k} = LM(E_{k}, Retrieve(M, E_{k}))\)。非边界帧只更新 \(\bar{f}\)，不产生任何文本。</p>
 <h3>4.3 输出与在线边界</h3>
-<p>设定是严格因果的：单向前向，不使用未来帧，预测器也只回看一帧。允许回看已压缩记忆，但检索对象是事件嵌入而非原始帧，被合并掉的信息无法恢复。记忆没有显式的容量上限与淘汰规则，控制增长的只有事件级抽象与 merge-or-append 合并；原文未报告 <code>γ_mem</code>、<code>λ</code>、<code>ρ</code> 与三路融合权重的取值，这是复现的主要不确定项。</p>
+<p>设定是严格因果的：单向前向，不使用未来帧，预测器也只回看一帧。允许回看已压缩记忆，但检索对象是事件嵌入而非原始帧，被合并掉的信息无法恢复。记忆没有显式的容量上限与淘汰规则，控制增长的只有事件级抽象与 merge-or-append 合并；原文未报告 \(\gamma _{mem}\)、\(\lambda \)、\(\rho \) 与三路融合权重的取值，这是复现的主要不确定项。</p>
 <p>延迟方面，全程维持 sub-0.1 s/token，多数 token 落在 0.05–0.08 s，两小时流上无明显漂移，单张 RTX 6000 Ada 上约 17 FPS；对照 Flash-VStream 稳态为 0.03–0.04 s，VideoLLM-Online 贴近 0.1 s 且在效率测试中约 300 s 后 OOM。显存占用的绝对值（GB）未在已核验的公开材料中确认。</p>
 
 <h2 id="evidence">5. 证据与实验</h2>
@@ -136,7 +138,6 @@
 </ul>
 <div class="srcbox">
 <p><b>来源：</b>arXiv abs 页 https://arxiv.org/abs/2601.15655（v1，2026-01-22 提交）；HTML 全文 https://arxiv.org/html/2601.15655v1（§4.2 公式 1–4、§4.4 Algorithm 1 与迟滞策略、Table 1–2、§5.3.1 Figure 8 时延测试）。作者未公开代码仓库。</p>
-<p><b>图像说明：</b><code>figures/fig2_architecture.png</code> 由作者 LaTeX 源码 Figure 2 原图渲染，原图 PDF 见 <code>figures/fig2_architecture.pdf</code>。</p>
 </div>
 <p class="pagefoot">相关页面：<a href="../motion-aware-ssl/index.html">Motion-Aware Self-Supervision</a> · <a href="../hierarchical-event-memory/index.html">Hierarchical Event Memory</a> · <a href="../kemo/index.html">KEMO</a> · <a href="../../index.html">返回总站</a></p>
 </article>

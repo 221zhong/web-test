@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>专题一 · 历史关键事件检测｜VLA 历史记忆</title>
 <link rel="stylesheet" href="../style.css">
+<script src="../mathjax-config.js"></script>
+<script defer src="../vendor/mathjax/tex-svg.js"></script>
 </head>
 <body>
 <header>
@@ -73,9 +75,9 @@
 </tr>
 <tr>
 <td>P0-5</td><td><a href="kemo/index.html">KEMO</a></td><td>arXiv 2026</td>
-<td>关键帧写成 16 token/帧的有序记忆，注入 π0.5</td>
+<td>关键帧写成 16 token/帧的有序记忆，注入 \(\pi_{0.5}\)</td>
 <td>因果，但峰值需 20–60 帧确认窗后才写入</td>
-<td>运动学峰值检测器 <code>S_t = 1/(1+δ̄_t)</code> 取局部极大 + 不应期</td>
+<td>运动学峰值检测器 \(S_t = \frac{1}{1+\bar{\delta}_t}\) 取局部极大 + 不应期</td>
 </tr>
 <tr>
 <td>P1-1</td><td><a href="motion-aware-ssl/index.html">Motion-Aware SSL</a></td><td>WACV 2023</td>
@@ -178,7 +180,7 @@
 <a class="paper-card" href="kemo/index.html">
 <span class="tag">P0-5 · VLA 端到端验证</span>
 <h3>KEMO</h3>
-<p>关节减速提名、视觉去重、有序 memory token 注入 π0.5。</p>
+<p>关节减速提名、视觉去重、有序 memory token 注入 \(\pi_{0.5}\)。</p>
 <p class="meta">Zeng et al. · arXiv 2026</p>
 </a>
 <a class="paper-card" href="motion-aware-ssl/index.html">
@@ -226,7 +228,7 @@
 </section>
 
 <div class="card">
-<p class="meta">阅读约定：每篇精读固定七节（核心摘要 / 流水线定位 / 问题与动机 / 方法拆解 / 证据与实验 / 优点局限与 VLA 适配 / 落地清单），页首决策卡给出「最小可复用件 / 主要风险 / 复现门槛」。数字仅保留论文报告值，无法核验的一律标注「未在已核验的公开材料中确认」。方法图优先取自作者 LaTeX 源码；只有 PDF 排版图时，按该 figure 的包围盒精确裁切，不夹带图注、正文、页眉页脚或相邻图表；无法干净裁切时才改用本站重绘并标注对应原图号。</p>
+<p class="meta">阅读约定：每篇精读固定七节（核心摘要 / 流水线定位 / 问题与动机 / 方法拆解 / 证据与实验 / 优点局限与 VLA 适配 / 落地清单），页首决策卡给出「最小可复用件 / 主要风险 / 复现门槛」。数字仅保留论文报告值，无法核验的一律标注「未在已核验的公开材料中确认」。图注只描述图内内容，限 1–2 句、200 字以内；表注只写口径、单位和比较对象。</p>
 </div>
 
 <p class="pagefoot">相关专题：<a href="kv-cache-event-memory/index.html">专题二 · KV Cache 与事件记忆</a> · <a href="../index.html">返回总站</a></p>

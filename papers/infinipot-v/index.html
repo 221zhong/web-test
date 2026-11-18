@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>InfiniPot-V｜论文精读</title>
 <link rel="stylesheet" href="../../style.css">
+<script src="../../mathjax-config.js"></script>
+<script defer src="../../vendor/mathjax/tex-svg.js"></script>
 </head>
 <body>
 <header><div class="wrap">
@@ -21,7 +23,7 @@
 
 <h2 id="summary">1. 核心摘要</h2>
 <p>长视频 MLLM 的上下文瓶颈不仅来自视觉 token 数量，也来自 Transformer 各层逐步累积的 key-value（KV）cache。若先把整段视频编码完再压缩，峰值内存仍随视频长度增长；若依赖已知问题筛选 token，则无法服务问题尚未出现的连续视频流。InfiniPot-V 将问题限定为 Streaming Video Understanding：帧持续输入、查询可能晚到、设备只有固定内存预算。</p>
-<p>方法以 Continual KV-cache Compression（CKV）为主循环：缓存抵达预算 <code>|M|</code> 时，压缩到较小目标 <code>|C|</code>，为后续帧腾出空间。Temporal-axis Redundancy（TaR）用 Key 的跨帧同位置相似度淘汰时间冗余 token；Value Norm（VaN）则用 Value 的范数选择语义显著 token，并以逐层自适应池化降低空间重复。论文报告在四个开源 MLLM、四个长视频与两个流式 benchmark 上，最高可减少 94% 峰值 GPU 内存，同时保持或超过 Full-KV 结果，并能支持多轮问答。</p>
+<p>方法以 Continual KV-cache Compression（CKV）为主循环：缓存抵达预算 \(|M|\) 时，压缩到较小目标 \(|C|\)，为后续帧腾出空间。Temporal-axis Redundancy（TaR）用 Key 的跨帧同位置相似度淘汰时间冗余 token；Value Norm（VaN）则用 Value 的范数选择语义显著 token，并以逐层自适应池化降低空间重复。论文报告在四个开源 MLLM、四个长视频与两个流式 benchmark 上，最高可减少 94% 峰值 GPU 内存，同时保持或超过 Full-KV 结果，并能支持多轮问答。</p>
 
 <h2 id="motivation">2. 研究动机</h2>
 <h3>流式视频与离线长视频的约束不同</h3>
@@ -33,19 +35,19 @@
 
 <h2 id="method">3. 方法论</h2>
 <img class="figure" src="figures/fig2-compression.png" alt="InfiniPot-V 的 TaR 与 VaN 时空 KV 压缩机制">
-<p class="caption">原论文 Figure 2。左侧比较相邻帧静态与变化 patch 的相似度；右侧展示 TaR 的时间选择与 VaN 的空间选择如何共同形成固定预算缓存。</p>
+<p class="caption">Figure 2：左侧比较相邻帧静态与变化 patch 的相似度；右侧展示 TaR 时间选择与 VaN 空间选择如何形成固定预算缓存。</p>
 <h3>3.1 CKV 主循环：预算触发，而非事后整理</h3>
-<p>每个新帧先照常经过视觉编码器和 MLLM，得到新 <code>K<sub>new</sub>, V<sub>new</sub></code> 并追加至缓存。当缓存长度达到内存预算 <code>|M|</code>，系统立即抽取最近 <code>r</code> 帧、对其余历史计算 TaR/VaN 分数，并把整个缓存压缩为目标长度 <code>|C|</code>，其中 <code>|M| &gt;&gt; |C|</code>。释放的 <code>|M|−|C|</code> 槽位接收下一轮新帧；任意时刻有 query 到来，模型直接基于当前压缩缓存回答，无需回放原始视频。</p>
+<p>每个新帧先照常经过视觉编码器和 MLLM，得到新 \(K_{\mathrm{new}},V_{\mathrm{new}}\) 并追加至缓存。当缓存长度达到内存预算 \(|M|\)，系统立即抽取最近 \(r\) 帧、对其余历史计算 TaR/VaN 分数，并把整个缓存压缩为目标长度 \(|C|\)，其中 \(|M| \gg  |C|\)。释放的 \(|M|-|C|\) 槽位接收下一轮新帧；任意时刻有 query 到来，模型直接基于当前压缩缓存回答，无需回放原始视频。</p>
 <p>这里的关键是压缩发生在缓存超预算时而非问答前。因而缓存长度始终被控制，代价是必须在 query-agnostic 条件下做选择。论文报告该压缩过程相对于输入帧处理时间仅增加约 0.5% 开销；这使其更像在线系统的内存控制器，而非额外的大型检索模型。</p>
 <h3>3.2 TaR：用 Key 的时序相似性保留不冗余的历史</h3>
-<p>作者把 <code>K∈R^(H×(f·p)×D)</code> 按帧和 patch 重排，其中 <code>H</code> 是 attention head 数、<code>f</code> 是当前预算内帧数、<code>p=|M|/f</code> 是每帧视觉 token 数。最近 <code>r</code> 帧完整保留；早期 <code>f−r</code> 帧的每个位置与最近帧相同位置比较。其分数为：</p>
-<p><code>s<sup>TaR</sup>(t,i,j)=−(1/r) Σ<sub>t′=1</sub><sup>r</sup> cos(K<sub>past</sub><sup>(t,i,j)</sup>, K<sub>recent</sub><sup>(t′,i,j)</sup>)</code>。</p>
+<p>作者把 \(K\in R^(H\times (f\cdot p)\times D)\) 按帧和 patch 重排，其中 \(H\) 是 attention head 数、\(f\) 是当前预算内帧数、\(p=|M|/f\) 是每帧视觉 token 数。最近 \(r\) 帧完整保留；早期 \(f-r\) 帧的每个位置与最近帧相同位置比较。其分数为：</p>
+<p>\(s^{TaR}(t,i,j)=-(1/r) \sum_{t^{\prime}=1}^{r} \operatorname{cos}(K_{past}^{(t,i,j)}, K_{recent}^{(t^{\prime},i,j)})\)。</p>
 <p>负号把“低相似、低冗余”的 token 转成更高分，之后从历史帧中取 Top-K。保留最近帧可以避免刚发生的变化被过早压掉；从早期帧保留低相似 patch 则让很早出现但仍有区别性的视觉证据留在 cache。对事件记忆而言，这一机制相当于低成本的“变化证据”，但它判断的是表示变化，不保证变化对任务一定重要。</p>
 <h3>3.3 VaN：从 Value 的范数选择语义显著区域</h3>
-<p>TaR 主要解决跨帧重复，不能保证留下对象、文字或交互区域。VaN 以 Value token 的二范数作为显著性：<code>s<sup>VaN</sup>=||V<sup>(t,i,j)</sup>||₂</code>。论文通过将视觉表示投影到词表空间并考察熵，论证高 VaN token 具有更丰富的语义信息；随后在每层选取池化后 VaN 最高的 token。</p>
-<p>VaN 的池化核不是各层固定。论文观察到早中层 VaN 具有较强空间局部性，深层则更分散，于是根据每层 VaN 的 coefficient of variation（CV）选择 <code>{1,3,5,7}</code> 的池化尺度：CV 小的层使用较大核以消除成片的重复高分区域，CV 大的深层使用更小核以保留细粒度差异。这样避免显著 token 全挤在同一空间位置。</p>
+<p>TaR 主要解决跨帧重复，不能保证留下对象、文字或交互区域。VaN 以 Value token 的二范数作为显著性：\(s^{VaN}=\lVert V^{(t,i,j)}\rVert_{2}\)。论文通过将视觉表示投影到词表空间并考察熵，论证高 VaN token 具有更丰富的语义信息；随后在每层选取池化后 VaN 最高的 token。</p>
+<p>VaN 的池化核不是各层固定。论文观察到早中层 VaN 具有较强空间局部性，深层则更分散，于是根据每层 VaN 的 coefficient of variation（CV）选择 \({1,3,5,7}\) 的池化尺度：CV 小的层使用较大核以消除成片的重复高分区域，CV 大的深层使用更小核以保留细粒度差异。这样避免显著 token 全挤在同一空间位置。</p>
 <h3>3.4 两种选择如何合并</h3>
-<p>TaR 与 VaN 采用顺序预算分配：先用比例 <code>α|C|</code> 给 TaR 分配时间维槽位，再用剩余 <code>(1−α)|C|</code> 给 VaN 分配空间语义槽位，最后加上完整的 recent-frame token。TaR 防止缓存被相同背景占满，VaN 防止仅按运动删掉语义对象；最近帧保证控制或问答对当前状态仍敏感。论文的设计空间实验还考察了 <code>α</code>、最近帧比例和压缩率。</p>
+<p>TaR 与 VaN 采用顺序预算分配：先用比例 \(\alpha |C|\) 给 TaR 分配时间维槽位，再用剩余 \((1-\alpha )|C|\) 给 VaN 分配空间语义槽位，最后加上完整的 recent-frame token。TaR 防止缓存被相同背景占满，VaN 防止仅按运动删掉语义对象；最近帧保证控制或问答对当前状态仍敏感。论文的设计空间实验还考察了 \(\alpha \)、最近帧比例和压缩率。</p>
 <h3>3.5 对 VLA 历史关键事件的含义</h3>
 <p>InfiniPot-V 可作为“持续运行的底层缓存守门员”：TaR 对应视觉变化/冗余门控，VaN 对应无 query 情况下的语义显著性。但机器人关键事件还依赖接触、夹爪、关节、语言进度和任务成功等不可由视觉 Value norm 充分表达的证据。因此更合理的迁移方式是将 TaR/VaN 的分数与 eventness 融合：普通重复 token 做 TaR/VaN 压缩，确认的 grasp、place、open 等事件则作为不可轻易淘汰的 commit 条目。</p>
 
@@ -55,7 +57,7 @@
 <p>论文摘要报告峰值 GPU 内存最高降低 94%，并指出在多轮对话中仍能保持或超过 Full-KV 精度。消融的逻辑在于：TaR-only 会偏重时间去重，VaN-only 会偏重空间语义；两者按预算结合才同时覆盖历史差异和显著区域。这里的性能仍是 VideoQA/视频理解分数，不能直接等同于机器人控制的成功率或关键事件召回。</p>
 
 <h2 id="limits">5. 优势与局限</h2>
-<table><tr><th>优势</th><th>局限 / 迁移注意点</th></tr><tr><td><ul><li>训练无关、问题无关，可直接包裹多种既有 MLLM。</li><li>用明确的 <code>|M|→|C|</code> 循环给出严格的内存上界。</li><li>TaR、VaN 与 recent frames 分别覆盖时间冗余、语义显著性和当前状态。</li><li>实验同时覆盖长视频、流式和多轮条件。</li></ul></td><td><ul><li>VaN 是无 query 的代理分数，显著不必然等于任务相关。</li><li>压缩后被淘汰的 KV 不能恢复；早期罕见但低范数事件仍可能丢失。</li><li>方法没有使用机器人 proprioception、接触或指令阶段，不能独立定义操作事件。</li><li>逐层评分与池化仍需实现级支持，VLA 后端的实际时延应单独测量。</li></ul></td></tr></table>
+<table><tr><th>优势</th><th>局限 / 迁移注意点</th></tr><tr><td><ul><li>训练无关、问题无关，可直接包裹多种既有 MLLM。</li><li>用明确的 \(|M|\to |C|\) 循环给出严格的内存上界。</li><li>TaR、VaN 与 recent frames 分别覆盖时间冗余、语义显著性和当前状态。</li><li>实验同时覆盖长视频、流式和多轮条件。</li></ul></td><td><ul><li>VaN 是无 query 的代理分数，显著不必然等于任务相关。</li><li>压缩后被淘汰的 KV 不能恢复；早期罕见但低范数事件仍可能丢失。</li><li>方法没有使用机器人 proprioception、接触或指令阶段，不能独立定义操作事件。</li><li>逐层评分与池化仍需实现级支持，VLA 后端的实际时延应单独测量。</li></ul></td></tr></table>
 
 <h2 id="conclusion">6. 总结</h2>
 <p>InfiniPot-V 将长视频 KV 管理从“事后删掉部分上下文”改成持续的固定预算控制：近期帧完整保留，早期 cache 则由 TaR 留下不冗余变化、由 VaN 留下语义显著区域。这使无 query 的无限视频流也能维持有限内存。</p>

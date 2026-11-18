@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>VidKV：Video LLM 的 1.x-bit KV Cache Quantization｜论文精读</title>
 <link rel="stylesheet" href="../../style.css">
+<script src="../../mathjax-config.js"></script>
+<script defer src="../../vendor/mathjax/tex-svg.js"></script>
 </head>
 <body>
 <header>
@@ -29,7 +31,7 @@
 
   <h2 id="summary">1. 核心摘要</h2>
   <p>VidKV 面向长视频 Video LLM 的 KV cache：视觉帧被编码为大量 token，随着预填充和自回归解码持续保留的 Key/Value 会迅速占据显存。已有 KV 量化多从文本 LLM 的分布假设出发，通常止步于 2-bit；本文首先观察到视频 token 存在较高冗余，因此 2-bit 对性能影响很小，进而尝试将 KV 推到 1.x-bit。</p>
-  <p>核心设计是对 K 与 V 分治。Key cache 中少数异常通道不适合一刀切的 1-bit，故以 channel range 选出异常通道保留 2-bit，普通通道先经 FFT 再做 1-bit；Value cache 则使用三值 <code>{-1, 0, 1}</code> 的 1.58-bit 量化，并把与文本 query 高相关的视觉 token 改用 2-bit 保护。论文在 LLaVA-OneVision-7B 与 Qwen2.5-VL-7B、六个视频生成/理解基准上报告：1.5-bit Key 加 1.58-bit Value 可以接近 FP16 性能，且少量 token 保护可进一步补回精度。</p>
+  <p>核心设计是对 K 与 V 分治。Key cache 中少数异常通道不适合一刀切的 1-bit，故以 channel range 选出异常通道保留 2-bit，普通通道先经 FFT 再做 1-bit；Value cache 则使用三值 \({-1, 0, 1}\) 的 1.58-bit 量化，并把与文本 query 高相关的视觉 token 改用 2-bit 保护。论文在 LLaVA-OneVision-7B 与 Qwen2.5-VL-7B、六个视频生成/理解基准上报告：1.5-bit Key 加 1.58-bit Value 可以接近 FP16 性能，且少量 token 保护可进一步补回精度。</p>
 
   <h2 id="motivation">2. 研究动机</h2>
   <h3>视频上下文把 KV cache 变成主要瓶颈</h3>
@@ -40,19 +42,19 @@
   <p>不是每个视觉 token 对当前文本问题都同等重要。对“杯子在哪里”这类 query，包含目标物体的 token 不能和背景 token 一样被激进量化。VidKV 因此把缓存容量优化与跨模态相关性接起来：大多数 token 获得低比特压缩，少量高相关 token 获得更高精度保护。这一点与 VLA 记忆中的“事件重要性决定资源预算”直接相关。</p>
 
   <h2 id="method">3. 方法论</h2>
-  <img class="figure" src="figures/fig1-overview.png" alt="VidKV 原论文 Figure 2 总体架构">
-  <p class="caption">原论文 Figure 2。视觉帧经编码后形成视觉 token；Key 分支按通道做混合位宽量化，Value 分支以 1.58-bit 为主并对重要 token 做高精度保护。</p>
+  <img class="figure" src="figures/fig1-overview.png" alt="VidKV  Figure 2 总体架构">
+  <p class="caption">Figure 2：视觉 token 分别进入 Key 混合位宽量化与 Value 三值量化分支，重要 Value token 由高精度分支保留。</p>
   <h3>3.1 KV cache 的位置与总体数据流</h3>
-  <p>设输入 token 为 <code>X=concat[X<sub>s</sub>, X<sub>v</sub>, X<sub>t</sub>]</code>，其中分别对应 system、visual 与 text token。每个注意力层写入 <code>K=XW<sub>k</sub></code> 与 <code>V=XW<sub>v</sub></code>。解码时，新 token 的 query 要与历史 K 计算权重，再用该权重聚合 V。VidKV 不改模型权重或训练目标，而是在 cache 写入、存储和读取的路径替换量化/反量化表示，因此属于 plug-and-play 推理优化。</p>
+  <p>设输入 token 为 \(X=\operatorname{concat}[X_{s}, X_{v}, X_{t}]\)，其中分别对应 system、visual 与 text token。每个注意力层写入 \(K=XW_{k}\) 与 \(V=XW_{v}\)。解码时，新 token 的 query 要与历史 K 计算权重，再用该权重聚合 V。VidKV 不改模型权重或训练目标，而是在 cache 写入、存储和读取的路径替换量化/反量化表示，因此属于 plug-and-play 推理优化。</p>
   <h3>3.2 Key：range 驱动的混合精度与 FFT 1-bit</h3>
-  <p>Key cache 的难点是异常通道。作者比较 variance、range 与 outlier count 来估计每个通道的量化难度，最终以 range 选择比例为 <code>k</code> 的异常通道：它们采用 2-bit；其余正常通道采用 1-bit。这样平均 Key 位宽可低于 2-bit，却不会把最难量化的通道也压到 1-bit。</p>
-  <p>对正常通道，作者先做 Fast Fourier Transform，使时域的尖锐振荡在频域更平滑、能量更集中，再进行二值化。论文将该路径写成 <code>Q(X<sub>fft</sub>)=sign(FFT(X))+1</code>；反量化后以 IFFT 回到使用空间。缩放项取频域幅值均值，零偏置为零。论文报告这一步的计算额外开销低于 5%，但能显著减少普通 Key 通道的 1-bit 量化误差。</p>
+  <p>Key cache 的难点是异常通道。作者比较 variance、range 与 outlier count 来估计每个通道的量化难度，最终以 range 选择比例为 \(k\) 的异常通道：它们采用 2-bit；其余正常通道采用 1-bit。这样平均 Key 位宽可低于 2-bit，却不会把最难量化的通道也压到 1-bit。</p>
+  <p>对正常通道，作者先做 Fast Fourier Transform，使时域的尖锐振荡在频域更平滑、能量更集中，再进行二值化。论文将该路径写成 \(Q(X_{fft})=\operatorname{sign}(\operatorname{FFT}(X))+1\)；反量化后以 IFFT 回到使用空间。缩放项取频域幅值均值，零偏置为零。论文报告这一步的计算额外开销低于 5%，但能显著减少普通 Key 通道的 1-bit 量化误差。</p>
   <h3>3.3 Value：1.58-bit 三值量化与 per-channel 结论</h3>
-  <p>Value 采用 1.58-bit，即三值 <code>{-1,0,1}</code>。预填充时，以 <code>α=γ·mean(|V|)</code> 为阈值，量化形式为 <code>Q(V)=sgn(V)·1[|V|&gt;α]</code>。解码阶段，attention weight 与三值 Value 的乘法可以化为加减，既节省存储，也有潜在计算收益。实验同时指出，Video LLM 的 Value cache 更适合 per-channel 而不是 per-token 量化；这一点与一些文本 LLM 结论相反。</p>
-  <img class="figure" src="figures/fig2-value.png" alt="VidKV 原论文 Figure 3 的 1.58-bit Value 量化">
-  <p class="caption">原论文 Figure 3。新 Value 与已量化缓存拼接后，三值 Value 使 attention 的乘法可转化为加减运算。</p>
+  <p>Value 采用 1.58-bit，即三值 \({-1,0,1}\)。预填充时，以 \(\alpha = \gamma \cdot \operatorname{mean}(|V|)\) 为阈值，量化形式为 \(Q(V)=\operatorname{sgn}(V) \cdot 1[|V|\gt  \alpha ]\)。解码阶段，attention weight 与三值 Value 的乘法可以化为加减，既节省存储，也有潜在计算收益。实验同时指出，Video LLM 的 Value cache 更适合 per-channel 而不是 per-token 量化；这一点与一些文本 LLM 结论相反。</p>
+  <img class="figure" src="figures/fig2-value.png" alt="VidKV  Figure 3 的 1.58-bit Value 量化">
+  <p class="caption">Figure 3：新 Value 与缓存拼接后参与注意力计算；三值 Value 将乘法简化为加减运算。</p>
   <h3>3.4 Semantic Token Protection：把位宽给最相关视觉证据</h3>
-  <p>仅靠 1.58-bit Value 仍会损伤少数关键视觉证据。Semantic Token Protection（STP）利用视觉 token 与文本 query 的 cross-modal attention，计算重要度 <code>I=X<sub>v</sub>(i)X<sub>t</sub>(j)<sup>T</sup></code>；排名前 <code>n=p·l<sub>v</sub></code> 的 token 以 2-bit 保存，其余维持 1.58-bit。STP 的资源含义很明确：提高 <code>p</code> 会增加平均位宽，但能优先保护回答问题所需的对象/动作 token。</p>
+  <p>仅靠 1.58-bit Value 仍会损伤少数关键视觉证据。Semantic Token Protection（STP）利用视觉 token 与文本 query 的 cross-modal attention，计算重要度 \(I=X_{v}(i)X_{t}(j)^{T}\)；排名前 \(n=p \cdot l_{v}\) 的 token 以 2-bit 保存，其余维持 1.58-bit。STP 的资源含义很明确：提高 \(p\) 会增加平均位宽，但能优先保护回答问题所需的对象/动作 token。</p>
   <h3>3.5 与事件记忆的接口</h3>
   <p>VidKV 本身不做时间边界检测或长期检索，其 STP 分数也只对当前文本 query 有意义。对 VLA，更合适的组合是：先由 motion、appearance、robot state 决定某帧/事件是否应写入；对已经提交的事件 KV，再用 VidKV 的 channel-wise 量化与重要 token 保护降低成本。这样“写什么”与“怎么低比特保存”分属两个可独立评估的模块。</p>
 

@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>层级事件记忆（OnVTG）｜专题一 · 历史关键事件检测</title>
 <link rel="stylesheet" href="../../style.css">
+<script src="../../mathjax-config.js"></script>
+<script defer src="../../vendor/mathjax/tex-svg.js"></script>
 </head>
 <body>
 <header>
@@ -37,14 +39,14 @@
 <div class="vt">决策卡</div>
 <p>可以把「帧队列 → 多尺度事件 proposal → 分层预算记忆」这条写入链直接搬进 VLA 历史模块；代价是整套 proposal 生成与预算分配都要重新用机器人轨迹统计训练，且它的低延迟来自牺牲定位精度。</p>
 <dl>
-<dt>最小可复用件</dt><dd>相邻 proposal 两两合并成的尺度树，加 <code>K_i = 1 + (K-L)·w_i/Σw_j</code> 的频率预算分配，以及溢出时「先相似合并、再 FIFO」的写入规则。</dd>
-<dt>主要风险</dt><dd>预算权重 <code>w_i</code> 来自数据集里正样本的尺度分布，换成机器人数据后若状态转移集中在单一尺度，其余尺度的槽位会被压到最小值，长期信息实际上存不下来。</dd>
+<dt>最小可复用件</dt><dd>相邻 proposal 两两合并成的尺度树，加 \(K_{i} = 1 + (K-L)\cdot w_{i}/\sum w_{j}\) 的频率预算分配，以及溢出时「先相似合并、再 FIFO」的写入规则。</dd>
+<dt>主要风险</dt><dd>预算权重 \(w_{i}\) 来自数据集里正样本的尺度分布，换成机器人数据后若状态转移集中在单一尺度，其余尺度的槽位会被压到最小值，长期信息实际上存不下来。</dd>
 <dt>复现门槛</dt><dd>需要带起止时间标注的长视频（TACoS、ActivityNet Captions、MAD）与逐帧视觉特征；单卡可训，参数量 36.2M，论文报告 614.5 FPS 推理。</dd>
 </dl>
 </div>
 
 <h2 id="summary">1. 核心摘要</h2>
-<p>Online Video Temporal Grounding（OnVTG）要求在看不到未来帧的条件下，随视频流推进尽早给出文本 query 所指向事件的起止时间。已有在线模型把最近若干帧的特征存进 memory，再逐帧判断「当前帧是否是起点或终点」，这种表示既没有事件结构，也留不住长期信息。本文把记忆单位从帧换成事件 proposal：在长度为 8 帧的短窗口上用 1-D 卷积生成最小尺度 proposal，相邻 proposal 逐级合并成 8 个尺度的线段树，按各尺度正样本频率分配共 64 个记忆槽位；query 到达时用 Transformer decoder 对候选分类并回归边界。另设 future prediction 分支预测目标是否将在 <code>[t-4, t+4]</code> 帧内开始并回归起点，把起点预测从「事件结束后」提前到「事件开始前」。判定：写入路径与预算规则可复用，低延迟分支只能当预取信号用。</p>
+<p>Online Video Temporal Grounding（OnVTG）要求在看不到未来帧的条件下，随视频流推进尽早给出文本 query 所指向事件的起止时间。已有在线模型把最近若干帧的特征存进 memory，再逐帧判断「当前帧是否是起点或终点」，这种表示既没有事件结构，也留不住长期信息。本文把记忆单位从帧换成事件 proposal：在长度为 8 帧的短窗口上用 1-D 卷积生成最小尺度 proposal，相邻 proposal 逐级合并成 8 个尺度的线段树，按各尺度正样本频率分配共 64 个记忆槽位；query 到达时用 Transformer decoder 对候选分类并回归边界。另设 future prediction 分支预测目标是否将在 \([t-4, t+4]\) 帧内开始并回归起点，把起点预测从「事件结束后」提前到「事件开始前」。判定：写入路径与预算规则可复用，低延迟分支只能当预取信号用。</p>
 
 <h2 id="stage">2. 事件流水线定位</h2>
 <div class="flowline">
@@ -53,34 +55,34 @@
 <p>该工作的主战场是记忆写入与长期维护：决定哪些事件进入历史、每个尺度留多少、旧条目何时被合并或淘汰。检索标为 part，是因为它也提供了 query 到达后的完整读取流程——对当前窗口 proposal 与历史事件一起分类、回归边界——但检索只在有 query 时发生，写入本身不依赖 query。上游假设是已按固定帧率抽好的视觉特征；下游交出的是起止时间戳，不产出动作，也不改变策略。</p>
 <table>
 <tr><th>环节</th><th>内容</th></tr>
-<tr><td>输入</td><td>流式视频帧特征 <code>v_i</code>、文本 query、时刻 <code>t</code>；短窗口为 <code>[t-7, t]</code>。</td></tr>
+<tr><td>输入</td><td>流式视频帧特征 \(v_{i}\)、文本 query、时刻 \(t\)；短窗口为 \([t-7, t]\)。</td></tr>
 <tr><td>输出</td><td>每个 proposal 的正负判定、起止偏移；开启 FP 时额外输出「未来窗口内是否开始」与预测起点。</td></tr>
 <tr><td>交给下游</td><td>事件级记忆条目（含持续时间与尺度），供后续 query 直接在历史上检索，而不必回看原始帧。</td></tr>
 </table>
 
 <h2 id="problem">3. 问题与动机</h2>
-<p>帧级 memory 的失效是结构性的：固定存 <code>K</code> 帧特征只能覆盖 <code>K</code> 帧历史，更长的事件在内存里拼不出完整片段；而事件时长从几秒到数十秒不等。逐帧二分类把一个事件压成两个瞬时点，表达不了长事件包含子段，也无法把子段归到父事件。写入策略同样粗糙：先进先出在视频流上会把槽位交给大量高度重复的静止片段，作者指出纯 FIFO 会让 memory 被冗余内容填满。</p>
-<p>延迟问题来自另一侧。用 proposal 同时回归起点和终点，必须等事件结束、proposal 覆盖完整区间后才能定位起点；论文在 TACoS 上不加 future prediction 时起点偏差为 22.38 秒，等于事件结束后才「追溯」出开始时刻。要真在线，必须在事件尚未开始时就说「马上开始、起点在 <code>t+Δ</code>」。</p>
+<p>帧级 memory 的失效是结构性的：固定存 \(K\) 帧特征只能覆盖 \(K\) 帧历史，更长的事件在内存里拼不出完整片段；而事件时长从几秒到数十秒不等。逐帧二分类把一个事件压成两个瞬时点，表达不了长事件包含子段，也无法把子段归到父事件。写入策略同样粗糙：先进先出在视频流上会把槽位交给大量高度重复的静止片段，作者指出纯 FIFO 会让 memory 被冗余内容填满。</p>
+<p>延迟问题来自另一侧。用 proposal 同时回归起点和终点，必须等事件结束、proposal 覆盖完整区间后才能定位起点；论文在 TACoS 上不加 future prediction 时起点偏差为 22.38 秒，等于事件结束后才「追溯」出开始时刻。要真在线，必须在事件尚未开始时就说「马上开始、起点在 \(t+\Delta \)」。</p>
 
 <h2 id="method">4. 方法拆解</h2>
 <img class="figure" src="figures/method.png" alt="层级事件记忆方法总览：流式视频经短窗与视觉编码器生成多尺度事件 proposal，与分层事件记忆交互后由文本 query 驱动分类与边界回归，另有未来预测分支输出起点">
-<p class="caption">原论文方法图，由作者 LaTeX 源码渲染，原图 PDF 见 <code>figures/method-original.pdf</code>。左侧为事件模型：短窗口 proposal、分层事件记忆、记忆驱动的 proposal 精炼、多模态融合与分类/回归，顶部绿色为 future prediction 分支；右侧为记忆更新流程，上半是按正样本分布扩缩各尺度容量，下半是「合并或 FIFO」的二选一。</p>
+<p class="caption">方法图：左侧依次生成短窗口 proposal、更新分层事件记忆、精炼 proposal 并融合分类与回归；右侧展示动态容量分配和“合并或 FIFO”的更新分支。</p>
 
 <h3>4.1 输入与时间表征</h3>
-<p>记时刻 <code>t</code> 的短窗口为 <code>V = {v_i}, i ∈ [t-L_s+1, t]</code>，<code>L_s = 8</code>。视觉编码器抽特征后，用 1-D 卷积得到第一尺度 proposal 特征 <code>P¹</code>；第 <code>j</code> 尺度的 proposal 时长为 <code>2^j</code>，因此尺度本身就编码了「这段历史有多长」，不必再额外附时间戳。TACoS 与 ActivityNet Captions 用 C3D 特征，MAD 用 CLIP 特征。</p>
+<p>记时刻 \(t\) 的短窗口为 \(V = {v_{i}}, i \in  [t-L_{s}+1, t]\)，\(L_{s} = 8\)。视觉编码器抽特征后，用 1-D 卷积得到第一尺度 proposal 特征 \(P^{1}\)；第 \(j\) 尺度的 proposal 时长为 \(2^{j}\)，因此尺度本身就编码了「这段历史有多长」，不必再额外附时间戳。TACoS 与 ActivityNet Captions 用 C3D 特征，MAD 用 CLIP 特征。</p>
 
 <h3>4.2 关键机制</h3>
-<p><b>从帧队列到多尺度事件。</b> 相邻两个小尺度 proposal 拼接后过 MLP 得到上一级：<code>p^{j+1}_i = MLP([p^j_{2i}; p^j_{2i-1}])</code>，共 <code>L = 8</code> 个尺度，构成线段树。当某尺度时长超过短窗口（如尺度 3、4），公式里的另一半改为取 memory 中该尺度最近的历史事件，于是当前 proposal 天然跨过窗口边界，接到过去。</p>
+<p><b>从帧队列到多尺度事件。</b> 相邻两个小尺度 proposal 拼接后过 MLP 得到上一级：\(p^{j+1}_{i} = MLP([p^{j}_{2i}; p^{j}_{2i-1}])\)，共 \(L = 8\) 个尺度，构成线段树。当某尺度时长超过短窗口（如尺度 3、4），公式里的另一半改为取 memory 中该尺度最近的历史事件，于是当前 proposal 天然跨过窗口边界，接到过去。</p>
 <p><b>粒度与合并规则。</b> 小尺度对应单帧级位移，大尺度对应数秒到数十秒的行为段；合并只发生在相邻同级 proposal 之间，不做全局聚类，因此每个记忆条目始终对应一段连续时间，可回溯到原始区间。</p>
-<p><b>近期细、远期粗的分配。</b> 总容量 <code>K = 64</code>，先给每个尺度 1 个槽位保证可检索，剩余按该尺度正样本频率 <code>w_i</code> 分配：<code>K_i = 1 + (K-L)·w_i / Σ_j w_j</code>。频率高的尺度拿更多槽位，长事件靠少量粗粒度条目维持；分配由数据决定，不是手工设定「近处多、远处少」。</p>
-<p><b>写入与淘汰。</b> 某尺度超容时，先算该尺度内相邻事件的余弦相似度；存在大于 <code>δ</code> 的相邻对就用 average pooling 合并，重复直到不超容；若没有可合并的相邻对，再按 FIFO 保留最近 <code>K_i</code> 条。相似度阈值 <code>δ</code> 的具体取值未在已核验的公开材料中确认。</p>
-<p><b>query 到来后的检索与定位。</b> proposal 先经记忆驱动精炼 <code>P^j = E(P^j; M)</code>，由一个 transformer encoder 层读取同尺度历史：小尺度取近期细节，大尺度取长期粗粒度。文本 query 经文本编码器得到 <code>E_text(Q)</code>，与全部尺度 proposal 一起送入 Transformer decoder：<code>P̂ = D(P, E_text(Q))</code>；随后 MLP 分类判定正 proposal，另一 MLP 回归起止偏移，监督为 focal loss 加 DIoU loss。历史条目不再过视觉编码器，只在 proposal 层面参与注意力，这是低成本跨长时间跨度的原因。</p>
+<p><b>近期细、远期粗的分配。</b> 总容量 \(K = 64\)，先给每个尺度 1 个槽位保证可检索，剩余按该尺度正样本频率 \(w_{i}\) 分配：\(K_{i} = 1 + (K-L)\cdot w_{i} / \sum_{j} w_{j}\)。频率高的尺度拿更多槽位，长事件靠少量粗粒度条目维持；分配由数据决定，不是手工设定「近处多、远处少」。</p>
+<p><b>写入与淘汰。</b> 某尺度超容时，先算该尺度内相邻事件的余弦相似度；存在大于 \(\delta \) 的相邻对就用 average pooling 合并，重复直到不超容；若没有可合并的相邻对，再按 FIFO 保留最近 \(K_{i}\) 条。相似度阈值 \(\delta \) 的具体取值未在已核验的公开材料中确认。</p>
+<p><b>query 到来后的检索与定位。</b> proposal 先经记忆驱动精炼 \(P^{j} = E(P^{j}; M)\)，由一个 transformer encoder 层读取同尺度历史：小尺度取近期细节，大尺度取长期粗粒度。文本 query 经文本编码器得到 \(E_{text}(Q)\)，与全部尺度 proposal 一起送入 Transformer decoder：\(\hat{P} = D(P, E_{text}(Q))\)；随后 MLP 分类判定正 proposal，另一 MLP 回归起止偏移，监督为 focal loss 加 DIoU loss。历史条目不再过视觉编码器，只在 proposal 层面参与注意力，这是低成本跨长时间跨度的原因。</p>
 
 <h3>4.3 输出与在线边界</h3>
-<p><b>因果性。</b> 是因果的。摘要要求 without observing future frames；短窗口只到 <code>t</code>，跨窗口合并只调用已存事件，没有任何一步回看未来帧。</p>
+<p><b>因果性。</b> 是因果的。摘要要求 without observing future frames；短窗口只到 \(t\)，跨窗口合并只调用已存事件，没有任何一步回看未来帧。</p>
 <p><b>历史保留与上限。</b> 保留时长不设限——事件记忆贯穿整条流，早期事件只要没被挤出就一直可读；但条目数有硬上限，总容量 64 个事件、8 个尺度、每尺度至少 1 条。所以「记得多久」取决于该尺度的事件密度而非固定秒数，论文未给出各数据集的实际覆盖跨度。</p>
 <p><b>proposal 能否事后改写。</b> 溢出时旧条目会被相邻合并改变内容，属于写入路径上的被动改写；论文未提供对已写事件回溯重定位、拆分或删除的接口，这点未在已核验的公开材料中确认。</p>
-<p><b>低延迟的来源。</b> 两处。其一，proposal 在事件进行中就存在，query 一旦到达即可对已发生部分打分，不必等新事件结束。其二，future prediction 分支以当前 proposal 特征预测目标在 <code>[t+a, t+b]</code>（<code>a = -4, b = 4</code>）内是否开始，并回归起点偏移，使系统在事件开始前就能报出起点。</p>
+<p><b>低延迟的来源。</b> 两处。其一，proposal 在事件进行中就存在，query 一旦到达即可对已发生部分打分，不必等新事件结束。其二，future prediction 分支以当前 proposal 特征预测目标在 \([t+a, t+b]\)（\(a = -4, b = 4\)）内是否开始，并回归起点偏移，使系统在事件开始前就能报出起点。</p>
 
 <h2 id="evidence">5. 证据与实验</h2>
 <p>数据集为 TACoS、ActivityNet Captions、MAD。指标是 <code>R1@0.5</code>、<code>R1@0.7</code>、<code>R5@0.5</code>、<code>R5@0.7</code>（MAD 用 <code>R5@0.3</code>、<code>R5@0.5</code>、<code>R50@0.3</code>、<code>R50@0.5</code>），加两个延迟指标：SD（起点偏差）与 ED（终点偏差），负值表示预测时刻早于真值。</p>
@@ -106,14 +108,13 @@
 <h2 id="repro">7. 落地清单</h2>
 <ul class="checklist">
 <li>复用 1-D 卷积加两两合并的线段树，把 8 帧基础单元改成与控制器同频的固定步长。</li>
-<li>统计真实轨迹中各尺度的状态转移频率，替换 <code>w_i</code> 后按 <code>K_i</code> 公式重算槽位，并检查每尺度是否被压到 1。</li>
+<li>统计真实轨迹中各尺度的状态转移频率，替换 \(w_{i}\) 后按 \(K_{i}\) 公式重算槽位，并检查每尺度是否被压到 1。</li>
 <li>在写入路径实现「相邻相似度合并 → FIFO 兜底」，同时记录每次合并覆盖的原始时间区间以便审计。</li>
 <li>把 future prediction 分支限制为预取与预备动作触发器，其输出不写入长期记忆。</li>
 <li>先在离线回放上测 SD/ED 与任务成功率的相关性，再决定是否开启低延迟分支。</li>
 </ul>
 <div class="srcbox">
 <p><b>来源：</b>arXiv:2508.04546v1（2025-08-06 提交，ICCV 2025 接收）<a href="https://arxiv.org/abs/2508.04546">abs 页</a>；<a href="https://openaccess.thecvf.com/content/ICCV2025/papers/Zheng_Hierarchical_Event_Memory_for_Accurate_and_Low-latency_Online_Video_Temporal_ICCV_2025_paper.pdf">CVF 论文 PDF</a>；<a href="https://github.com/minghangz/OnVTG">官方代码 OnVTG</a>。表 1–表 3 数值、表 4 消融与表 5 效率均取自论文原文。</p>
-<p><b>图像说明：</b>方法图为作者 LaTeX 源码原图，由 <code>figures/method-original.pdf</code> 渲染为 <code>figures/method.png</code>，未做内容改动。</p>
 </div>
 <p class="pagefoot">相关页面：<a href="../kemo/index.html">KEMO · 事件关键帧记忆</a> · <a href="../hat/index.html">HAT · 在线 VTG 基线</a> · <a href="../flowgebd/index.html">FlowGEBD · 边界检测</a> · <a href="../../index.html">返回总站</a></p>
 </article>

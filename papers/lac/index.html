@@ -5,14 +5,8 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>LAC：可学习的自适应视觉 Token 缓存｜专题二 · KV Cache 与事件记忆</title>
 <link rel="stylesheet" href="../../style.css">
-<script>
-window.MathJax = {
-  tex: { inlineMath: [['\\(', '\\)']], displayMath: [['\\[', '\\]']], processEscapes: true },
-  options: { skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code'] },
-  chtml: { displayAlign: 'center' }
-};
-</script>
-<script defer src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+<script src="../../mathjax-config.js"></script>
+<script defer src="../../vendor/mathjax/tex-svg.js"></script>
 </head>
 <body>
 <header>
@@ -62,7 +56,7 @@ window.MathJax = {
 
 <p>训练两阶段。Stage I 让 selector 用 MSE 拟合冻结 VLA 的 attention map 做热启动；Stage II 冻结 VLA、只训这两个模块，\(L_{\text{total}} = L_{\text{VLA}} + \lambda L_{\text{ratio}}\)，\(L_{\text{ratio}}\) 奖励更高的缓存比例。两处离散决策（\(\operatorname{argmax}\) 选比例、top-\(k\) 选 token）用 Gumbel-Softmax + straight-through 做「前向硬、反向软」。推理期决策全确定性，另加随机恢复：以 \(p_{\text{recover}}\) 把一部分已缓存 token 强制重算。</p>
 
-<p><strong>判定：</strong>「第一个可学习的自适应缓存框架」这个定位站得住。收益不只是速度——OpenVLA / LIBERO 上 75.0%→76.9%、1.76× 加速（51.91→29.51 ms）、FLOPs −25.3%。换来的是「必须训练」，且仍是相邻控制步之间的短时 KV 复用，不做跨 episode 记忆。</p>
+<p><strong>判定：</strong>「第一个可学习的自适应缓存框架」这个定位站得住。收益不只是速度——OpenVLA / LIBERO 上 75.0%→76.9%、1.76\(\times\) 加速（51.91→29.51 ms）、FLOPs −25.3%。换来的是「必须训练」，且仍是相邻控制步之间的短时 KV 复用，不做跨 episode 记忆。</p>
 
 <h2 id="stage">2 复用机制定位</h2>
 
@@ -107,7 +101,7 @@ window.MathJax = {
 <h2 id="method">4 方法拆解</h2>
 
 <img class="figure" src="figures/fig2-framework.png" alt="LAC 两阶段训练与方法总图">
-<p class="caption">Figure 2：上排 Stage I 用冻结 VLA 的 attention scores 监督 selector 的 predicted scores，做 MSE；下排 Stage II 由比例预测器在候选格点上选预算，按 saliency 取最低分 token 生成 mask，与 active tokens 一起进 VLA，梯度沿红虚线回流更新两个模块。</p>
+<p class="caption">Figure 2：Stage I 用注意力分数监督 token 选择器；Stage II 依据预算和显著性生成缓存掩码，红色虚线表示梯度回传路径。</p>
 
 <h3>4.1 两个模块</h3>
 
@@ -154,18 +148,18 @@ window.MathJax = {
 </table>
 </div>
 
-<p>平均 +1.9 个百分点，墙钟 1.76×，FLOPs −25.3%。增益很不均：<strong>Long 53.2%→59.2%</strong>贡献了几乎所有提升，Spatial +1.2、Goal +1.0，<strong>Object 反而略降（86.6%→86.2%）</strong>——长程任务静态背景占比更大，但提升并不均匀。</p>
+<p>平均 +1.9 个百分点，墙钟 1.76\(\times\)，FLOPs −25.3%。增益很不均：<strong>Long 53.2%→59.2%</strong>贡献了几乎所有提升，Spatial +1.2、Goal +1.0，<strong>Object 反而略降（86.6%→86.2%）</strong>——长程任务静态背景占比更大，但提升并不均匀。</p>
 
 <img class="figure" src="figures/fig3-learned-vs-rule-mask.png" alt="VLA-Cache 与 LAC 的缓存掩码逐帧对比">
-<p class="caption">Figure 3：同一段 LIBERO 轨迹的缓存掩码。上排 VLA-Cache 的掩码几乎不变，左侧静止的篮子全程被橙色覆盖（= 缓存）；下排 LAC 的 saliency 落在夹爪上，篮子保持原色（= 每步重算）。</p>
+<p class="caption">Figure 3：同一 LIBERO 轨迹中的缓存掩码。上排保持近乎固定的缓存区域；下排随夹爪位置调整显著性与重算区域。</p>
 
 <div class="notice">
-<p><b>口径提醒。</b>表里 VLA-Cache 的 74.7% / 1.355 T / 31.83 ms 是作者在同一权重下重跑的。LAC 的 FLOPs 其实<strong>高于</strong>它，墙钟只快约 1.08×——增量在成功率，不在速度。</p>
+<p><b>口径提醒。</b>表里 VLA-Cache 的 74.7% / 1.355 T / 31.83 ms 是作者在同一权重下重跑的。LAC 的 FLOPs 其实<strong>高于</strong>它，墙钟只快约 1.08\(\times\)——增量在成功率，不在速度。</p>
 </div>
 
 <h3>5.2 另外两套评测</h3>
 
-<p><strong>SIMPLER（CogAct）</strong>说明架构无关：diffusion 动作头与 OpenVLA 的自回归离散动作完全不同，LAC 仍获益（Visual Matching 74.8%→75.5%，Variant Aggregation 61.3%→63.0%），合并口径 FLOPs −17.4%、1.42× 加速。</p>
+<p><strong>SIMPLER（CogAct）</strong>说明架构无关：diffusion 动作头与 OpenVLA 的自回归离散动作完全不同，LAC 仍获益（Visual Matching 74.8%→75.5%，Variant Aggregation 61.3%→63.0%），合并口径 FLOPs −17.4%、1.42\(\times\) 加速。</p>
 
 <p><strong>真机（Franka + LoRA）</strong>平均 33.0%→38.0%，+5.0 个百分点。但这组要谨慎：VLA-Cache 在真机上反掉到 30.0%（低于 baseline），LAC 的提升几乎全来自 KnockBottle 一个任务（44.0%→64.0%）；成功率都是 4 的倍数，单次翻转就是 2–4 个百分点。</p>
 
@@ -216,9 +210,9 @@ window.MathJax = {
 <h2 id="repro">7 落地清单</h2>
 
 <ul class="checklist">
-<li><strong>先量三件事</strong>：单步 prefill 墙钟、每帧 token 数 \(N\)、静态 token 占比。若 \(N\) 很小或动作已用 chunking 摊薄 prefill，收益会明显低于 1.76×。</li>
+<li><strong>先量三件事</strong>：单步 prefill 墙钟、每帧 token 数 \(N\)、静态 token 占比。若 \(N\) 很小或动作已用 chunking 摊薄 prefill，收益会明显低于 1.76\(\times\)。</li>
 <li><strong>Stage I 的验收线</strong>：selector 与聚合后 \(S_{\text{VLA}}\) 的 MSE 要降到「随机猜」的 1/3 以下，saliency 目视集中在夹爪与目标物。</li>
-<li><strong>对齐 token 网格</strong>：selector 输出分辨率 × patch size 必须等于编码器输入尺寸；\(k_{t} = \mathrm{round}(N \cdot r_{t})\) 要 clamp 到 \([1, N-1]\)，避免全缓存（attention 全空）或全重算。</li>
+<li><strong>对齐 token 网格</strong>：selector 输出分辨率 \(\times\) patch size 必须等于编码器输入尺寸；\(k_{t} = \mathrm{round}(N \cdot r_{t})\) 要 clamp 到 \([1, N-1]\)，避免全缓存（attention 全空）或全重算。</li>
 <li><strong>三条改造逐条验证</strong>：先做 \(r=0\) 的等价性测试（全重算输出应与 baseline 逐位一致），再做 \(r=1\) 的极端测试。</li>
 <li><strong>把 \(p_{\text{recover}}\) 当主旋钮</strong>：它单项 +2.2 个百分点，比 predictor 更大。先用固定比例跑通再加 predictor，才能分辨掉点来自 token 选择还是预算选择。</li>
 </ul>

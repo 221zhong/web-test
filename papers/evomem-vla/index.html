@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>EvoMem-VLA｜专题三 · 在线记忆</title>
 <link rel="stylesheet" href="../../style.css">
+<script src="../../mathjax-config.js"></script>
+<script defer src="../../vendor/mathjax/tex-svg.js"></script>
 </head>
 <body>
 <header>
@@ -39,15 +41,15 @@
 <dl>
 <dt>最小可复用件</dt><dd>条件式 delta tokenization 的构造配方（冻结 DINOv3 ViT-B/16 + 单 token 瓶颈 + log-cosh 重建目标特征）与「固定 15 步配对 + delta 紧跟目标帧」的记忆排布规则；这两件事可以脱离它的 VLM 主干单独搬走。</dd>
 <dt>主要风险</dt><dd>配对错位或相机抖动会被当成「状态变化」写进记忆；差分是相对量、没有绝对基准，长 episode 里只累积相对变化会缓慢漂移；消融显示「直接用特征相减」比「完全不给差分」更差（47.1% vs 52.3%），说明错误的差分是有害噪声而非中性信息。</dd>
-<dt>复现门槛</dt><dd>8 卡、策略 8 万步（RMBench / RoboMME 各训一个联合策略）；Qwen3-VL-4B-Instruct 底座 + 官方 DeltaTok 权重 + DINOv3 ViT-B/16；tokenizer 适配另需每基准单独一轮。真机侧 4 任务 × 每形态 50 条示范。</dd>
+<dt>复现门槛</dt><dd>8 卡、策略 8 万步（RMBench / RoboMME 各训一个联合策略）；Qwen3-VL-4B-Instruct 底座 + 官方 DeltaTok 权重 + DINOv3 ViT-B/16；tokenizer 适配另需每基准单独一轮。真机侧 4 任务 \(\times\) 每形态 50 条示范。</dd>
 </dl>
 </div>
 
 <h2 id="summary">1 核心摘要</h2>
 <p>问题出在记忆的<strong>单位</strong>上。论文的出发点是：一个孤立的快照能告诉策略「当时是什么样」，但告诉不了它「上一次交互之后发生了什么」，而后者恰恰是判断任务进行到哪一步、下一步该做什么的依据。在最能说明问题的一个任务里（RMBench 的 Press Button），策略要按左键 9 次、中键 1 次、最后按终止键；每次按完按钮，场景位形几乎回到同一个样子，当前帧和任何一个关键帧都不携带「已经按了几次」这个信息。只要记忆里存的都是「状态」，策略就必须自己从若干状态里反推过程。</p>
-<p>EvoMem-VLA 的答案是<strong>把过程本身存下来</strong>。它用 conditional delta tokenization 把一对有序帧 <code>(I_u, I_v)</code>（<code>u ≤ v</code>）压成<strong>一个</strong> token：冻结的 DINOv3 抽出两帧的 patch 特征，一个带可学习 query 的配对编码器 <code>g_Δ</code> 只保留「目标帧里源帧解释不了的部分」，解码器再从「源特征 + 这个 token」重建目标特征，用 log-cosh 损失预训练。这个瓶颈决定了 token 的性质——它是<strong>有方向的、以源为条件的</strong>变化表征，而不是像素差、光流场或动作编码。预训练完编码器冻结、解码器丢弃，只留 token。</p>
-<p>这些 token 被组织成「多尺度状态演化记忆」：固定锚点保留 episode 首帧与 <code>t−30</code>、<code>t−15</code>、<code>t</code> 三帧；三个近期差分组分别编码 <code>(t−45,t−30)</code>、<code>(t−30,t−15)</code>、<code>(t−15,t)</code>；每个被选中的事件帧 <code>κ_i</code> 再配一个从 <code>(κ_i−15, κ_i)</code> 算出的差分 token。排布规则很硬：<strong>每个 delta token 紧贴在它对应的目标帧前面</strong>，于是「变成了什么样」和「变成了什么」在序列里相邻，VLM 不需要自己去做对齐。共享的 Qwen3-VL-4B 主干在同一套记忆上支持两条路径：普通长时程任务直接出动作块，多阶段任务先生成一句可执行子任务再出动作，而走哪条路由由任务级配置写死，<strong>不是学出来的分类器</strong>。</p>
-<p>证据侧给的是三个互不相通的评测：RMBench 九个任务一个联合策略 80.7%（此前最好 67.8%）、RoboMME 十六个任务 82.0%（最强基线 44.5%）、两个形态四个真机任务 83.8%（πMEM 30.0%、π0.5 5.0%）。RMBench 上的消融最能说明设计取舍：去掉 delta token 掉到 52.3%，去掉子任务路由掉到 61.3%，而把学出来的差分换成「目标特征减源特征」掉到 47.1%——比完全不给差分还低。</p>
+<p>EvoMem-VLA 的答案是<strong>把过程本身存下来</strong>。它用 conditional delta tokenization 把一对有序帧 \((I_{u}, I_{v})\)（\(u \le  v\)）压成<strong>一个</strong> token：冻结的 DINOv3 抽出两帧的 patch 特征，一个带可学习 query 的配对编码器 \(g_\Delta \) 只保留「目标帧里源帧解释不了的部分」，解码器再从「源特征 + 这个 token」重建目标特征，用 log-cosh 损失预训练。这个瓶颈决定了 token 的性质——它是<strong>有方向的、以源为条件的</strong>变化表征，而不是像素差、光流场或动作编码。预训练完编码器冻结、解码器丢弃，只留 token。</p>
+<p>这些 token 被组织成「多尺度状态演化记忆」：固定锚点保留 episode 首帧与 \(t-30\)、\(t-15\)、\(t\) 三帧；三个近期差分组分别编码 \((t-45,t-30)\)、\((t-30,t-15)\)、\((t-15,t)\)；每个被选中的事件帧 \(\kappa _{i}\) 再配一个从 \((\kappa _{i}-15, \kappa _{i})\) 算出的差分 token。排布规则很硬：<strong>每个 delta token 紧贴在它对应的目标帧前面</strong>，于是「变成了什么样」和「变成了什么」在序列里相邻，VLM 不需要自己去做对齐。共享的 Qwen3-VL-4B 主干在同一套记忆上支持两条路径：普通长时程任务直接出动作块，多阶段任务先生成一句可执行子任务再出动作，而走哪条路由由任务级配置写死，<strong>不是学出来的分类器</strong>。</p>
+<p>证据侧给的是三个互不相通的评测：RMBench 九个任务一个联合策略 80.7%（此前最好 67.8%）、RoboMME 十六个任务 82.0%（最强基线 44.5%）、两个形态四个真机任务 83.8%（\(\pi\)MEM 30.0%、\(\pi_{0.5}\) 5.0%）。RMBench 上的消融最能说明设计取舍：去掉 delta token 掉到 52.3%，去掉子任务路由掉到 61.3%，而把学出来的差分换成「目标特征减源特征」掉到 47.1%——比完全不给差分还低。</p>
 <p><strong>判定：</strong>如果你的长时程失败模式是「两次视觉上几乎相同的状态需要不同动作」，那么这篇给出了当前最干净的一种记忆单元定义，值得照抄的是「差分 + 证据帧绑定 + 紧跟排布」这套数据结构，而不是它的 4B 主干；如果你的场景里没有可对齐的成对观测（多相机不同步、episode 内视角切换、或者目标物体被完全遮挡），这套差分退化成噪声的风险很高，先做一个 naive 相减的对照再决定。</p>
 
 <h2 id="stage">2 记忆环节定位</h2>
@@ -56,8 +58,8 @@
 <div class="wide">
 <table>
 <tr><th>环节</th><th>输入</th><th>输出</th><th>交给下游</th><th>在线性 / 因果性</th></tr>
-<tr><td>记忆表征</td><td>同一相机流内一对有序帧 <code>(I_u, I_v)</code>，间隔固定 15 个观测步</td><td>1 个 768 维 delta token（每对每流一个），经线性层投到 VLM 嵌入空间</td><td>与目标帧的视觉 token 交错成记忆序列 <code>M_t</code></td><td>因果。只使用 <code>v ≤ t</code> 的帧；不使用未来帧，不使用 oracle 状态或本体真值</td></tr>
-<tr><td>写入触发</td><td>当前步的 action-query 状态 <code>Z^A_t</code></td><td>长度 H 的 sigmoid 概率向量，索引 j 对应时刻 <code>t+j</code></td><td>最高分的合格 offset 若超过阈值就<strong>预约</strong>一次拍摄</td><td>因果。只预测「何时记录」，不预测未来观测；预约到点才真正写入，逾期不补</td></tr>
+<tr><td>记忆表征</td><td>同一相机流内一对有序帧 \((I_{u}, I_{v})\)，间隔固定 15 个观测步</td><td>1 个 768 维 delta token（每对每流一个），经线性层投到 VLM 嵌入空间</td><td>与目标帧的视觉 token 交错成记忆序列 \(M_{t}\)</td><td>因果。只使用 \(v \le  t\) 的帧；不使用未来帧，不使用 oracle 状态或本体真值</td></tr>
+<tr><td>写入触发</td><td>当前步的 action-query 状态 \(Z^{A}_{t}\)</td><td>长度 H 的 sigmoid 概率向量，索引 j 对应时刻 \(t+j\)</td><td>最高分的合格 offset 若超过阈值就<strong>预约</strong>一次拍摄</td><td>因果。只预测「何时记录」，不预测未来观测；预约到点才真正写入，逾期不补</td></tr>
 <tr><td>索引与检索</td><td>固定锚点 + 事件库 + 当前观测</td><td>拼接后的单一 token 序列</td><td>整个序列作为前缀喂进 VLM</td><td>无检索、无打分、无相关性过滤；容量满时按时间顺序丢最旧一条</td></tr>
 <tr><td>动作接口</td><td>记忆序列 + 指令 + 可选的历史子任务文本</td><td>直接出动作块，或先出一句子任务再出动作块</td><td>残差 MLP 动作头 / 语言建模头</td><td>路由由任务级配置固定，运行时不切换、不判断复杂度</td></tr>
 <tr><td>长期维护</td><td>事件库（容量 K）</td><td>FIFO 队列</td><td>—</td><td>RoboMME K=16、真机 K=5；每个 episode 开始全部重置，不做跨 episode 保留</td></tr>
@@ -68,11 +70,11 @@
 <p><strong>读取条件</strong>：无条件。每个重规划步都把锚点、近期差分链、全部已提交的事件条目拼成一条序列整体前向，没有 query、没有 top-k、没有注意力筛选。这带来一个直接后果——记忆越长，每一步的上下文越长，延迟随 K 线性增长（论文未报告延迟数据，此处为本页由配置推得的结构性结论）。</p>
 
 <h2 id="problem">3 问题与动机</h2>
-<p>论文把现有路线的失败拆成四类，每一类都对应 Figure 1(a) 里同一张「稀疏历史」示意：序列上有 <code>o_0</code>、<code>o_{t−m}</code>、<code>o_{t−n}</code>、<code>o_t</code>，中间画着一个问号，问号旁边写着「Changes not stored」。</p>
+<p>论文把现有路线的失败拆成四类，每一类都对应 Figure 1(a) 里同一张「稀疏历史」示意：序列上有 \(o_{0}\)、\(o_{t-m}\)、\(o_{t-n}\)、\(o_{t}\)，中间画着一个问号，问号旁边写着「Changes not stored」。</p>
 <div class="wide">
 <table>
 <tr><th>路线</th><th>代表工作（论文自述）</th><th>记忆里存的东西</th><th>失败模式</th></tr>
-<tr><td>无记忆</td><td>RT-2、OpenVLA、π0、QwenOFT、X-VLA</td><td>只有当前观测</td><td>证据离开视野即丢失；重复计数的任务上当前帧与「已做几次」无关</td></tr>
+<tr><td>无记忆</td><td>RT-2、OpenVLA、\(\pi_0\)、QwenOFT、X-VLA</td><td>只有当前观测</td><td>证据离开视野即丢失；重复计数的任务上当前帧与「已做几次」无关</td></tr>
 <tr><td>压缩历史特征</td><td>RoboFlamingo（LSTM 策略状态）、HAMLET（moment token + 因果记忆模块）、MemoryVLA（感知/认知长期记忆 + 检索）</td><td>一个不可分解的聚合向量或一组记忆条目</td><td>变化被折进向量里，策略仍要自己从状态反推过程；条目之间的「差」没有被显式表达</td></tr>
 <tr><td>稀疏关键帧</td><td>EventVLA（初帧 + 近期窗 + 事件触发关键帧，有界记忆）</td><td>被选中的少数几帧</td><td>选帧解决了「存什么」，没解决「变了什么」；关键帧之间靠模型脑补</td></tr>
 <tr><td>短窗运动提示</td><td>TraceVLA（把跟踪点轨迹叠加到当前图上）</td><td>窗口内的像素级运动轨迹</td><td>与稀疏的长期状态证据不在同一接口上，无法回答「十步前那个动作有没有生效」</td></tr>
@@ -80,58 +82,58 @@
 </table>
 </div>
 <p>这里最值得注意的一条批评是针对 EventVLA 的：它把「事件触发的关键帧」做成了有界记忆，但每个条目仍然是<strong>状态</strong>。作者的判断是，长时程控制要求策略把「记住的状态」和「执行中的变化」关联起来，而如果记忆里只有前者，这个关联就必须在推理时被临时算出来——在视觉高度相似的重复动作里，这个临时计算并不可靠。Press Button 就是这个论断的最小反例：九次按左键之后，任何单帧都长得差不多，唯一能区分「第 7 次」和「第 8 次」的信息是「上一次按下到抬起之间发生了什么」。</p>
-<p>Figure 1(b) 把三种范式并排画出来，是本页认为最值得引用的一张对照：memory-free 是「指令 + 观测 → VLA」；static-memory 是「指令 + 观测 + 离散记忆（几张小图，中间还夹着问号）→ VLA」；EvoMem-VLA 是「指令 + 观测 + 状态演化记忆（帧与 Δ 标记交替，下面一条时间轴 <code>t</code>）」→ VLA。差别不在记忆的长短，而在记忆里有没有 Δ 这个符号。</p>
+<p>Figure 1(b) 把三种范式并排画出来，是本页认为最值得引用的一张对照：memory-free 是「指令 + 观测 → VLA」；static-memory 是「指令 + 观测 + 离散记忆（几张小图，中间还夹着问号）→ VLA」；EvoMem-VLA 是「指令 + 观测 + 状态演化记忆（帧与 \(\Delta\) 标记交替，下面一条时间轴 \(t\)）」→ VLA。差别不在记忆的长短，而在记忆里有没有 \(\Delta\) 这个符号。</p>
 <img class="figure" src="figures/fig1_overview.png" alt="EvoMem-VLA 总览：(a) 动机，稀疏历史关键帧之间的状态变化未被记录，策略被迫在推理时猜测发生了什么；(b) 三种范式对比，无记忆、静态记忆与状态演化记忆，后者在帧之间插入 Δ 变化标记；(c) 在 RMBench、RoboMME 与真机四任务上的成功率对比">
-<p class="caption">图 1：动机与三范式对照 + 三个评测集的结果条。原图：作者 LaTeX 源码 <code>figures/evomem_vla_overview.pdf</code>（对应原文 Figure 1），300 dpi 以下渲染为 PNG。</p>
+<p class="caption">Figure 1：对比无记忆、静态记忆和状态演化记忆三种输入组织方式，并列出三个评测集的结果条。</p>
 
 <h2 id="method">4 方法拆解</h2>
 <h3>4.1 输入、动作接口与优化目标</h3>
-<p>时刻 <code>t</code> 的输入是观测 <code>o_t</code>、指令 <code>ℓ</code>，输出是长度 H 的动作块 <code>A_t = [a_t, …, a_{t+H−1}] ∈ R^{H×d_a}</code>。视觉编码器 <code>E_v</code> 与语言嵌入层 <code>E_ℓ</code> 给出 <code>V_t = E_v(o_t)</code>、<code>L = E_ℓ(ℓ)</code>，拼成 <code>X_t = [V_t; L]</code>；再给 H 个 action-query token <code>Q_A</code>，主干 <code>F_θ</code> 跑完后只取这 H 个 query 位置的状态：</p>
-<p><code>Z^A_t = F_θ([X_t; Q_A])_{Q_A}</code>，<code>Â_t = G_ψ(Z^A_t)</code></p>
-<p>动作头是一个两层残差 MLP，隐藏宽度取 VLM 的两倍；损失是动作块上的 L1，按元素数归一化：<code>L_act = ‖Â_t − A_t‖_1 / (H·d_a)</code>。这套接口沿用 QwenOFT（StarVLA 框架），仿真底座是 Qwen3-VL-4B-Instruct，真机底座换成机器人预训练的 <code>StarVLA/VLAct_Qwen3_Pretrain</code>。<strong>EvoMem-VLA 相对这个基线的全部改动，就是把「当前视觉上下文」替换成下面定义的结构化历史</strong>——主干、query 数、动作头都没变，这一点对移植很关键。</p>
-<p>需要提前记下的一个设计事实：<code>Z^A_t</code> 除了喂动作头，还被 Keyframe Head 复用。也就是说「什么时候该记账」这个判断，是从<strong>已经在算的动作表征</strong>上读出来的，不额外引入一条感知支路。</p>
+<p>时刻 \(t\) 的输入是观测 \(o_{t}\)、指令 \(\ell\)，输出是长度 H 的动作块 \(A_{t} = [a_{t}, \ldots , a_{t+H-1}] \in  \mathbb{R}^{H\times d_{a}}\)。视觉编码器 \(E_{v}\) 与语言嵌入层 \(E_\ell\) 给出 \(V_{t} = E_{v}(o_{t})\)、\(L = E_\ell(\ell)\)，拼成 \(X_{t} = [V_{t}; L]\)；再给 H 个 action-query token \(Q_{A}\)，主干 \(F_\theta \) 跑完后只取这 H 个 query 位置的状态：</p>
+<p>\(Z^{A}_{t} = F_\theta ([X_{t}; Q_{A}])_{Q_{A}}\)，\(\hat{A}_{t} = G_\psi (Z^{A}_{t})\)</p>
+<p>动作头是一个两层残差 MLP，隐藏宽度取 VLM 的两倍；损失是动作块上的 L1，按元素数归一化：\(L_{act} = \lVert \hat{A}_{t} - A_{t}\rVert_{1} / (H\cdot d_{a})\)。这套接口沿用 QwenOFT（StarVLA 框架），仿真底座是 Qwen3-VL-4B-Instruct，真机底座换成机器人预训练的 <code>StarVLA/VLAct_Qwen3_Pretrain</code>。<strong>EvoMem-VLA 相对这个基线的全部改动，就是把「当前视觉上下文」替换成下面定义的结构化历史</strong>——主干、query 数、动作头都没变，这一点对移植很关键。</p>
+<p>需要提前记下的一个设计事实：\(Z^{A}_{t}\) 除了喂动作头，还被 Keyframe Head 复用。也就是说「什么时候该记账」这个判断，是从<strong>已经在算的动作表征</strong>上读出来的，不额外引入一条感知支路。</p>
 
 <h3>4.2 条件式差分 token 的构造</h3>
-<p>给定同一相机流里的一对有序帧 <code>(I_u, I_v)</code>，<code>u ≤ v</code>，冻结的 DINOv3 编码器 <code>φ</code>（ViT-B/16）产出 patch 特征 <code>f_u = φ(I_u)</code>、<code>f_v = φ(I_v)</code>。配对编码器 <code>g_Δ</code> 在一个可学习 query <code>q_Δ</code> 的引导下，把「目标帧里源帧解释不了的信息」压成单个 token：</p>
-<p><code>z_{u→v} = g_Δ(f_u, f_v; q_Δ)</code>，<code>f̂_v = h_Δ(f_u, z_{u→v})</code>，<code>L_Δ = mean log-cosh(f̂_v − f_v)</code></p>
+<p>给定同一相机流里的一对有序帧 \((I_{u}, I_{v})\)，\(u \le  v\)，冻结的 DINOv3 编码器 \(\phi \)（ViT-B/16）产出 patch 特征 \(f_{u} = \phi (I_{u})\)、\(f_{v} = \phi (I_{v})\)。配对编码器 \(g_\Delta \) 在一个可学习 query \(q_\Delta \) 的引导下，把「目标帧里源帧解释不了的信息」压成单个 token：</p>
+<p>\(z_{u\to v} = g_\Delta (f_{u}, f_{v}; q_\Delta )\)，\(\hat{f}_{v} = h_\Delta (f_{u}, z_{u\to v})\)，\(L_\Delta  = \operatorname{mean} \operatorname{log}-cosh(\hat{f}_{v} - f_{v})\)</p>
 <p>三个细节决定了它是不是「差分」：</p>
 <ul>
-<li><strong>单 token 瓶颈</strong>：每对帧只出 1 个 768 维 token，编码器/解码器各 12 层，输入分辨率 256×256。信息损失是刻意的——如果允许出几十个 token，它就会退化成「把目标帧也存一遍」，记忆又回到帧的粒度。</li>
-<li><strong>源条件化</strong>：<code>g_Δ</code> 同时看 <code>f_u</code> 和 <code>f_v</code>，但目标被条件在源上重建，所以 token 编码的是<strong>相对源的变化</strong>，天然有方向（<code>z_{u→v} ≠ z_{v→u}</code>），也天然对「背景没变」这件事不敏感——没变的部分已经被源解释了。</li>
+<li><strong>单 token 瓶颈</strong>：每对帧只出 1 个 768 维 token，编码器/解码器各 12 层，输入分辨率 \(256\times 256\)。信息损失是刻意的——如果允许出几十个 token，它就会退化成「把目标帧也存一遍」，记忆又回到帧的粒度。</li>
+<li><strong>源条件化</strong>：\(g_\Delta \) 同时看 \(f_{u}\) 和 \(f_{v}\)，但目标被条件在源上重建，所以 token 编码的是<strong>相对源的变化</strong>，天然有方向（\(z_{u\to v} \ne  z_{v\to u}\)），也天然对「背景没变」这件事不敏感——没变的部分已经被源解释了。</li>
 <li><strong>与像素差/光流/动作码的区别</strong>：论文明确排除了这三者。它不是几何量，没有物理单位，不保证可解释；它是由「能否重建目标特征」这个目标逼出来的语义差分。</li>
 </ul>
-<p>训练分两阶段，这是复现时最容易踩坑的地方。<strong>第一阶段</strong>只训 tokenizer：冻结 <code>φ</code>，从 DeltaTok 官方权重初始化，在每个基准自己的示范数据上适配，只更新 <code>g_Δ</code> 与 <code>h_Δ</code>，8 卡、每卡 16、全局 128、lr 1e-4、weight decay 1e-2、bf16。<strong>第二阶段</strong>把 <code>φ</code> 和 <code>g_Δ</code> 一起冻结、把 <code>h_Δ</code> 整个丢掉，只训练 VLA 主干、delta 投影层、动作头和 Keyframe Head。所以 <code>L_Δ</code> 不出现在第二阶段的损失里，两阶段之间没有联合微调。真机实验更省：直接用官方预训练 DeltaTok，<strong>不做任何域适配</strong>。</p>
-<p>配套的消融很值得单独看：把学出来的 <code>g_Δ</code> 换成「目标特征减源特征再投影」，RMBench 上只有 47.1%，低于完全不给 delta token 的 52.3%。作者的解释是「仅暴露特征差异不够」，本页的读法是更具体的：原始 DINOv3 特征相减会把相机微动、光照变化、背景纹理这些与任务无关的高维分量原封不动塞进上下文，而条件式瓶颈恰好把这些「源能解释的部分」滤掉了。这条对照反过来给了你一个免费的验收测试——如果你的差分模块和 naive 相减打平，说明它没学到任何东西。</p>
+<p>训练分两阶段，这是复现时最容易踩坑的地方。<strong>第一阶段</strong>只训 tokenizer：冻结 \(\phi \)，从 DeltaTok 官方权重初始化，在每个基准自己的示范数据上适配，只更新 \(g_\Delta \) 与 \(h_\Delta \)，8 卡、每卡 16、全局 128、lr 1e-4、weight decay 1e-2、bf16。<strong>第二阶段</strong>把 \(\phi \) 和 \(g_\Delta \) 一起冻结、把 \(h_\Delta \) 整个丢掉，只训练 VLA 主干、delta 投影层、动作头和 Keyframe Head。所以 \(L_\Delta \) 不出现在第二阶段的损失里，两阶段之间没有联合微调。真机实验更省：直接用官方预训练 DeltaTok，<strong>不做任何域适配</strong>。</p>
+<p>配套的消融很值得单独看：把学出来的 \(g_\Delta \) 换成「目标特征减源特征再投影」，RMBench 上只有 47.1%，低于完全不给 delta token 的 52.3%。作者的解释是「仅暴露特征差异不够」，本页的读法是更具体的：原始 DINOv3 特征相减会把相机微动、光照变化、背景纹理这些与任务无关的高维分量原封不动塞进上下文，而条件式瓶颈恰好把这些「源能解释的部分」滤掉了。这条对照反过来给了你一个免费的验收测试——如果你的差分模块和 naive 相减打平，说明它没学到任何东西。</p>
 
 <h3>4.3 记忆组装：配对规则、写入触发与容量</h3>
-<p>记忆 <code>M_t</code> 由两部分拼成，第一部分是固定锚点与近期链：</p>
-<p><code>M^anc_t = [V_0; d^(3)_t; V_{t−30}; d^(2)_t; V_{t−15}; d^(1)_t; V_t]</code></p>
-<p>其中 <code>d^(1)_t</code> 最新、<code>d^(3)_t</code> 最旧，分别对应 <code>(t−45,t−30)</code>、<code>(t−30,t−15)</code>、<code>(t−15,t)</code> 三对，<strong>每个相机流各出一个 token</strong>。第二部分是事件库，按拍摄顺序追加：</p>
-<p><code>M_t = [M^anc_t; (d^e_i; V_{κ_i})_{i=1..m_t}]</code>，其中 <code>d^e_i</code> 来自 <code>(κ_i − 15, κ_i)</code>，<strong>只用主视角</strong>。</p>
+<p>记忆 \(M_{t}\) 由两部分拼成，第一部分是固定锚点与近期链：</p>
+<p>\(M^{anc}_{t} = [V_{0}; d^{(3)}_{t}; V_{t-30}; d^{(2)}_{t}; V_{t-15}; d^{(1)}_{t}; V_{t}]\)</p>
+<p>其中 \(d^{(1)}_{t}\) 最新、\(d^{(3)}_{t}\) 最旧，分别对应 \((t-45,t-30)\)、\((t-30,t-15)\)、\((t-15,t)\) 三对，<strong>每个相机流各出一个 token</strong>。第二部分是事件库，按拍摄顺序追加：</p>
+<p>\(M_{t} = [M^{anc}_{t}; (d^{e}_{i}; V_{\kappa _{i}})_{i=1..m_{t}}]\)，其中 \(d^{e}_{i}\) 来自 \((\kappa _{i} - 15, \kappa _{i})\)，<strong>只用主视角</strong>。</p>
 <p>这四行公式里藏着五条可执行约束，抄的时候一条都不能省：</p>
 <div class="wide">
 <table>
 <tr><th>约束</th><th>取值 / 规则</th><th>为什么重要</th></tr>
-<tr><td>配对间隔</td><td>固定 15 个观测步（近期链与事件对都一样，<code>δ_e = 15</code>）</td><td>间隔固定意味着差分 token 的「语义尺度」统一；间隔变大，差分里混入的动作阶段就越多，token 越难被 VLM 解释</td></tr>
+<tr><td>配对间隔</td><td>固定 15 个观测步（近期链与事件对都一样，\(\delta _{e} = 15\)）</td><td>间隔固定意味着差分 token 的「语义尺度」统一；间隔变大，差分里混入的动作阶段就越多，token 越难被 VLM 解释</td></tr>
 <tr><td>配对边界</td><td>只在同一 episode 内配对，绝不跨 episode；负索引 clamp 到 0，复用首帧</td><td>跨 episode 配对会产生物理上不存在的变化；clamp 让 episode 开头几帧的「差分」退化为「首帧 vs 首帧」，等于空 token</td></tr>
 <tr><td>配对范围</td><td>近期链在每个相机流<strong>内部</strong>配对；事件对只用主视角</td><td>跨相机配对没有意义（不同视角的「变化」不可加），这条避免了最常见的实现错误</td></tr>
 <tr><td>排布顺序</td><td>每个 delta token 紧贴在它<strong>的目标帧之前</strong>；事件条目按拍摄时刻排序</td><td>让「变成了什么」和「怎么变的」在序列里相邻，VLM 不用学位置对应关系</td></tr>
-<tr><td>源帧处理</td><td>仅作为 tokenizer 输入的源帧<strong>不</strong>额外加入 RGB 记忆</td><td>否则 <code>(t−45)</code> 这类帧会被重复计入，记忆预算里出现冗余条目</td></tr>
+<tr><td>源帧处理</td><td>仅作为 tokenizer 输入的源帧<strong>不</strong>额外加入 RGB 记忆</td><td>否则 \((t-45)\) 这类帧会被重复计入，记忆预算里出现冗余条目</td></tr>
 </table>
 </div>
 <p>写入触发是一个独立的头。它读 action-query 状态，输出逐 offset 的记录概率：</p>
-<p><code>p̂_t = σ(k_ω(Z^A_t)) ∈ [0,1]^H</code>，索引 <code>j = 0,…,H−1</code> 对应时刻 <code>t+j</code></p>
-<p>系统只在最高分的合格 offset 上、且概率超过阈值（RoboMME 取 0.55）时才<strong>预约</strong>一次拍摄；到那个时刻才真正写入，容量满则丢最旧一条（RoboMME K=16，真机 K=5）。这个头的监督是正类加权的二元交叉熵，正类权重 7，损失权重 <code>λ_kf = 1</code>；正样本的 offset 来自数据集里的<strong>子目标边界标注</strong>（RoboMME 提供 subgoal-boundary annotation，与其子任务文本一起按 episode 时间步对齐）。</p>
+<p>\(\hat{p}_{t} = \sigma (k_\omega (Z^{A}_{t})) \in  [0,1]^{H}\)，索引 \(j = 0,\ldots ,H-1\) 对应时刻 \(t+j\)</p>
+<p>系统只在最高分的合格 offset 上、且概率超过阈值（RoboMME 取 0.55）时才<strong>预约</strong>一次拍摄；到那个时刻才真正写入，容量满则丢最旧一条（RoboMME K=16，真机 K=5）。这个头的监督是正类加权的二元交叉熵，正类权重 7，损失权重 \(\lambda _{kf} = 1\)；正样本的 offset 来自数据集里的<strong>子目标边界标注</strong>（RoboMME 提供 subgoal-boundary annotation，与其子任务文本一起按 episode 时间步对齐）。</p>
 <p>这里有两个必须写清楚的事实。第一，它<strong>不预测未来观测</strong>，只预测「何时记录」，所以调度本身不破坏因果性；预约可以落空，落空就什么都不发生。第二，RMBench 上 <strong>keyframe memory 是关闭的</strong>——那张表里只有固定锚点 + 三组近期差分，没有事件库。作者没有解释原因，但从数据条件看是自洽的：RMBench 只提供 episode 级子任务文本段，没有逐帧边界标注，Keyframe Head 缺少监督信号。这条对复现者的含义很直接：<strong>事件写入这条链路不是开箱可用的，它依赖带边界标注的数据集</strong>；没有标注时，你手上的版本就是 RMBench 配置——固定间隔差分，没有学出来的触发器。</p>
 <h3>4.4 共享主干与两条动作路径</h3>
-<p>记 <code>C_t = [M_t; L; E_ℓ(R_t)]</code>，<code>R_t</code> 是此前的子任务文本（direct 路径下为空）。子任务路径先解码一句可执行子任务，再把它接回同一份上下文做第二遍前向：</p>
-<p><code>ŝ_t = Decode_θ(C_t)</code>，<code>Â_t = Π_{θ,ψ}([C_t; E_ℓ(ŝ_t)])</code></p>
-<p>direct 路径就是 <code>Â_t = Π_{θ,ψ}(C_t)</code>。两条路径共享视觉编码器、delta 投影、VLM 主干、action query、动作头和 Keyframe Head，<strong>唯一变化的是条件路径</strong>。</p>
+<p>记 \(C_{t} = [M_{t}; L; E_\ell(R_{t})]\)，\(R_{t}\) 是此前的子任务文本（direct 路径下为空）。子任务路径先解码一句可执行子任务，再把它接回同一份上下文做第二遍前向：</p>
+<p>\(\hat{s}_{t} = Decode_\theta (C_{t})\)，\(\hat{A}_{t} = \Pi _{\theta ,\psi }([C_{t}; E_\ell(\hat{s}_{t})])\)</p>
+<p>direct 路径就是 \(\hat{A}_{t} = \Pi _{\theta ,\psi }(C_{t})\)。两条路径共享视觉编码器、delta 投影、VLM 主干、action query、动作头和 Keyframe Head，<strong>唯一变化的是条件路径</strong>。</p>
 <p>关于「它怎么在两条路径之间选」，论文的表述毫无含糊：「task-adaptive routing is specified by task-level configuration rather than a learned complexity classifier」。也就是说这是<strong>启发式的、写死的配置</strong>，不是路由网络。具体的分配是：RMBench 五个 M(1) 任务走 direct、四个 M(n) 任务（Battery Try、Blocks Ranking Try、Cover Blocks、Press Button）走子任务路径；RoboMME 全部 16 个任务走子任务路径；训练和评测期间配置不变。真机四任务的路由配置未在已核验材料中明确。</p>
-<p>推理时的子任务历史 <code>R_t</code> 是<strong>累积的生成文本</strong>，去空、去连续重复，每个 episode 重置。论文专门声明了一句：它记录的是「此前的预测」，不是「已验证的任务完成」。这句限制很重要——如果生成的子任务是错的，它会被写进 <code>R_t</code> 并在后续步骤里持续污染上下文，而系统没有任何回退或校验机制。</p>
-<p>训练目标是三项加权：<code>L = L_act + λ_lang·L_lang + λ_kf·L_kf</code>，<code>λ_lang = 0.005</code>。所有样本都算 <code>L_act</code>；只有子任务路径的样本算 <code>L_lang</code>（token 级交叉熵，视觉输入、prompt、action query 全部屏蔽），direct 样本贡献零语言损失。动作训练用的是<strong>标注的子任务文本</strong>，部署时用的是<strong>生成的子任务文本</strong>——这是一个训练/推理分布差，论文明确承认了但没做缓解。</p>
+<p>推理时的子任务历史 \(R_{t}\) 是<strong>累积的生成文本</strong>，去空、去连续重复，每个 episode 重置。论文专门声明了一句：它记录的是「此前的预测」，不是「已验证的任务完成」。这句限制很重要——如果生成的子任务是错的，它会被写进 \(R_{t}\) 并在后续步骤里持续污染上下文，而系统没有任何回退或校验机制。</p>
+<p>训练目标是三项加权：\(L = L_{act} + \lambda _{lang}\cdot L_{lang} + \lambda _{kf}\cdot L_{kf}\)，\(\lambda _{lang} = 0.005\)。所有样本都算 \(L_{act}\)；只有子任务路径的样本算 \(L_{lang}\)（token 级交叉熵，视觉输入、prompt、action query 全部屏蔽），direct 样本贡献零语言损失。动作训练用的是<strong>标注的子任务文本</strong>，部署时用的是<strong>生成的子任务文本</strong>——这是一个训练/推理分布差，论文明确承认了但没做缓解。</p>
 <img class="figure" src="figures/fig2_architecture.png" alt="EvoMem-VLA 架构三视图：(a) 共享 VLM 同时承担动作预测、子任务生成与关键帧选择，输入为观测、状态演化记忆、指令与历史子任务；(b) Delta Tokenizer，冻结 DINOv3 抽源/目标 patch 特征后由带可学习 query 的编码器压成单个有方向的 delta token；(c) 状态演化记忆，近期状态–变化链与关键帧–变化库的排布方式">
-<p class="caption">图 2：整体架构。(a) 一个共享 VLM 出三个头；(b) 条件式差分 token 的构造，注意源特征同时进入编码器与解码器；(c) 记忆排布，近期链与事件库中每个 Δ 都紧跟其目标帧。原图：作者 LaTeX 源码 <code>figures/evomem_vla_architecture.pdf</code>（对应原文 Figure 2），渲染为 PNG。</p>
+<p class="caption">Figure 2：(a) 共享 VLM 连接动作、子任务与关键帧预测头；(b) 条件式差分 token 由成对帧构造；(c) 近期链和事件库把每个 \(\Delta\) 放在目标帧之前。</p>
 
 <h2 id="evidence">5 证据与实验</h2>
 <p>三个评测集各自独立，没有任何一个数字是跨集合通用的。先把协议摊开，再看数字。</p>
@@ -140,7 +142,7 @@
 <tr><th>评测</th><th>任务与规模</th><th>策略数</th><th>每任务 episode</th><th>平均口径</th></tr>
 <tr><td>RMBench</td><td>9 个双臂任务（5 个 M(1) + 4 个 M(n)），共 900 episode</td><td>1 个，9 任务联合训练</td><td>100</td><td>按任务数加权（5 与 4 的算术平均），不是两组均值再平均</td></tr>
 <tr><td>RoboMME</td><td>16 个任务，四类记忆能力（counting / permanence / reference / imitation），共 1600 episode</td><td>1 个，16 任务联合训练</td><td>100（50 easy + 25 medium + 25 hard）</td><td>先类内平均，再四类等权平均</td></tr>
-<tr><td>真机</td><td>4 个任务 × 2 个形态（Franka 单臂 / AgileX COBOT 双臂），共 80 episode</td><td>2 个，每个形态一个</td><td>10（每形态每任务）</td><td>先合并两形态的 20 个 episode 得每任务成功率，再四任务等权平均</td></tr>
+<tr><td>真机</td><td>4 个任务 \(\times\) 2 个形态（Franka 单臂 / AgileX COBOT 双臂），共 80 episode</td><td>2 个，每个形态一个</td><td>10（每形态每任务）</td><td>先合并两形态的 20 个 episode 得每任务成功率，再四任务等权平均</td></tr>
 </table>
 </div>
 <h3>5.1 RMBench：单策略 80.7%，M(n) 提升最大</h3>
@@ -148,7 +150,7 @@
 <table class="cmp">
 <tr><th>方法</th><th>M(1) 均值</th><th>M(n) 均值</th><th>Overall</th></tr>
 <tr><td>QwenOFT</td><td>0.0</td><td>12.8</td><td>5.7</td></tr>
-<tr><td>π0.5</td><td>14.4</td><td>5.5</td><td>10.4</td></tr>
+<tr><td>\(\pi_{0.5}\)</td><td>14.4</td><td>5.5</td><td>10.4</td></tr>
 <tr><td>X-VLA</td><td>11.8</td><td>7.3</td><td>9.8</td></tr>
 <tr><td>Mem-0</td><td>52.8</td><td>28.5</td><td>42.0</td></tr>
 <tr><td>MemoryVLA（QwenOFT 版）</td><td>44.2</td><td>38.8</td><td>41.7</td></tr>
@@ -156,12 +158,12 @@
 <tr><td>EvoMem-VLA</td><td><b>84.0</b></td><td><b>76.5</b></td><td><b>80.7</b></td></tr>
 </table>
 </div>
-<p>相对 EventVLA 的 67.8%，总体高 12.9 点；拆开看，M(1) 只高 5.0 点（79.0 → 84.0），M(n) 高 22.5 点（54.0 → 76.5）。这个不对称是全文最重要的一条证据结构：<strong>增益集中在需要多段历史的任务上</strong>，单段记忆任务上它只是小胜。任务级上它在 9 个任务里全部排进前二，Rearrange Blocks / Swap Blocks / Swap T 三个到 100.0%，Press Button 从 EventVLA 的 3.0% 跳到 70.0%（这也是唯一一个它自己没到 96% 以上的任务，说明这类「九次重复 + 阶段切换」还没被彻底解决）。</p>
+<p>相对 EventVLA 的 67.8%，总体高 12.9 点；拆开看，M(1) 只高 5.0 点（\(79.0\to 84.0\)），M(n) 高 22.5 点（\(54.0\to 76.5\)）。这个不对称是全文最重要的一条证据结构：<strong>增益集中在需要多段历史的任务上</strong>，单段记忆任务上它只是小胜。任务级上它在 9 个任务里全部排进前二，Rearrange Blocks / Swap Blocks / Swap T 三个到 100.0%，Press Button 从 EventVLA 的 3.0% 跳到 70.0%（这也是唯一一个它自己没到 96% 以上的任务，说明这类「九次重复 + 阶段切换」还没被彻底解决）。</p>
 <h3>5.2 RoboMME：82.0%，四类能力全领先</h3>
 <div class="wide">
 <table class="cmp">
 <tr><th>方法</th><th>Counting</th><th>Permanence</th><th>Reference</th><th>Imitation</th><th>Avg.</th></tr>
-<tr><td>π0.5</td><td>28.8</td><td>17.0</td><td>17.2</td><td>8.8</td><td>17.9</td></tr>
+<tr><td>\(\pi_{0.5}\)</td><td>28.8</td><td>17.0</td><td>17.2</td><td>8.8</td><td>17.9</td></tr>
 <tr><td>SimpleSG（QwenVL）</td><td>44.6</td><td>19.6</td><td>25.2</td><td>26.6</td><td>29.0</td></tr>
 <tr><td>GroundSG（QwenVL）</td><td>38.0</td><td>39.3</td><td>31.6</td><td>21.9</td><td>32.7</td></tr>
 <tr><td>TokenDrop（Modul）</td><td>52.3</td><td>26.8</td><td>34.7</td><td>38.3</td><td>38.0</td></tr>
@@ -174,7 +176,7 @@
 <h3>5.3 真机：四任务 83.8%</h3>
 <div class="wide">
 <table class="cmp">
-<tr><th>任务</th><th>考察的记忆能力</th><th>π0.5</th><th>πMEM</th><th>EvoMem-VLA</th></tr>
+<tr><th>任务</th><th>考察的记忆能力</th><th>\(\pi_{0.5}\)</th><th>\(\pi\)MEM</th><th>EvoMem-VLA</th></tr>
 <tr><td>Lift Cup</td><td>按卡片数字重复举起放下（3–10 次），次数必须精确</td><td>10.0</td><td>30.0</td><td><b>85.0</b></td></tr>
 <tr><td>Cover Ducks</td><td>遮挡后仍记得三只鸭子的身份，按粉–绿–蓝顺序揭开</td><td>10.0</td><td>35.0</td><td><b>90.0</b></td></tr>
 <tr><td>Route Recall</td><td>记住人指认蓝盒的 3–6 步顺序（含重复），按序放置</td><td>10.0</td><td>30.0</td><td><b>75.0</b></td></tr>
@@ -182,9 +184,9 @@
 <tr><td>平均</td><td>—</td><td>5.0</td><td>30.0</td><td><b>83.8</b></td></tr>
 </table>
 </div>
-<p>真机这条对比是<strong>同协议</strong>的：π0.5 与 πMEM 都在同一批示范上微调，每方法每形态单独训练，评测条件一致。每形态给它自己的策略（Franka 单主视 + 单腕视；AgileX 单主视 + 双腕视），每任务 50 条示范、每形态 200 条、四任务合计 400 条。三个任务的成功判据都要求<strong>完整序列正确</strong>，任一步错序即判失败，这比「最终物体到位」严格得多。</p>
+<p>真机这条对比是<strong>同协议</strong>的：\(\pi_{0.5}\) 与 \(\pi\)MEM 都在同一批示范上微调，每方法每形态单独训练，评测条件一致。每形态给它自己的策略（Franka 单主视 + 单腕视；AgileX 单主视 + 双腕视），每任务 50 条示范、每形态 200 条、四任务合计 400 条。三个任务的成功判据都要求<strong>完整序列正确</strong>，任一步错序即判失败，这比「最终物体到位」严格得多。</p>
 <img class="figure" src="figures/fig3_realworld.png" alt="真机四个任务的执行序列与成功率对比：Lift Cup、Cover Ducks、Route Recall、Put Back Cup，每任务上排为 EvoMem-VLA、下排为对比方法，右侧条形图为三方法成功率">
-<p class="caption">图 3：四个真机任务的执行序列与成功率（85 / 90 / 75 / 85，平均 83.8%）。原图：作者 LaTeX 源码 <code>figures/real_world_tasks_results.pdf</code>（对应原文 Figure 3），渲染为 PNG。</p>
+<p class="caption">Figure 3：四个真机任务的执行序列与成功率依次为 85%、90%、75% 和 85%，平均为 83.8%。</p>
 <h3>5.4 消融：差分是主贡献，路由只补多阶段</h3>
 <div class="wide">
 <table class="cmp">
@@ -196,11 +198,11 @@
 <tr><td>两者都去掉</td><td>55.0</td><td>31.0</td><td>44.3</td></tr>
 </table>
 </div>
-<p>这是一个完整的 2×2：去掉 delta 掉 28.4 点，去掉路由掉 19.4 点。更有信息量的是两个方向性结论：<strong>去掉路由时 M(1) 完全不变</strong>（84.0 → 84.0），说明路由只对多阶段任务起作用；<strong>naive 相减比不给差分还低 5.2 点</strong>，说明「原始差分是有害的」而不只是「无用的」。从「两者都去掉」这个 44.3% 的状态出发，只恢复 delta 得到 61.3%（+17.0），只恢复路由得到 52.3%（+8.0）——两条路各自独立有效，叠加才到 80.7%。</p>
+<p>这是一个完整的 \(2\times 2\)：去掉 delta 掉 28.4 点，去掉路由掉 19.4 点。更有信息量的是两个方向性结论：<strong>去掉路由时 M(1) 完全不变</strong>（\(84.0\to 84.0\)），说明路由只对多阶段任务起作用；<strong>naive 相减比不给差分还低 5.2 点</strong>，说明「原始差分是有害的」而不只是「无用的」。从「两者都去掉」这个 44.3% 的状态出发，只恢复 delta 得到 61.3%（+17.0），只恢复路由得到 52.3%（+8.0）——两条路各自独立有效，叠加才到 80.7%。</p>
 <h3>5.5 这些数字为什么不能相加、也不能横向排名</h3>
 <ul>
-<li><strong>分母不同、平均口径不同。</strong>RMBench 是 9 任务 × 100 episode 的按任务数加权；RoboMME 是 16 任务 × 100 episode 的「类内平均再等权」；真机只有每任务 20 个 episode（两形态各 10）。三个 80.7 / 82.0 / 83.8 的分母、任务集、难度分层（RoboMME 还刻意分 easy/medium/hard）都不一样，把它们平均或相加没有任何统计含义。</li>
-<li><strong>基线数字来自已发表结果，不是重跑。</strong>论文 Table 8 明确说 DP、ACT、π0.5、X-VLA、Mem-0、MemoryVLA、EventVLA 的分数取自 EventVLA 附录与 RMBench 原文，RoboMME 的基线全部取自 RoboMME 基准报告，<strong>没有重新实现或重训</strong>。RoboMME 报告本身是「每任务 50 episode、3 个随机种子 × 3 个 checkpoint 取平均」，本文则是「每任务 100 episode」——同基准但不同评测预算。</li>
+<li><strong>分母不同、平均口径不同。</strong>RMBench 是 9 任务 \(\times\) 100 episode 的按任务数加权；RoboMME 是 16 任务 \(\times\) 100 episode 的「类内平均再等权」；真机只有每任务 20 个 episode（两形态各 10）。三个 80.7 / 82.0 / 83.8 的分母、任务集、难度分层（RoboMME 还刻意分 easy/medium/hard）都不一样，把它们平均或相加没有任何统计含义。</li>
+<li><strong>基线数字来自已发表结果，不是重跑。</strong>论文 Table 8 明确说 DP、ACT、\(\pi_{0.5}\)、X-VLA、Mem-0、MemoryVLA、EventVLA 的分数取自 EventVLA 附录与 RMBench 原文，RoboMME 的基线全部取自 RoboMME 基准报告，<strong>没有重新实现或重训</strong>。RoboMME 报告本身是「每任务 50 episode、3 个随机种子 \(\times\) 3 个 checkpoint 取平均」，本文则是「每任务 100 episode」——同基准但不同评测预算。</li>
 <li><strong>一处已知的口径不一致。</strong>论文自述：EventVLA 的 RMBench <em>总体</em>分数保留其发表的 67.8% 而没有按其展示的任务级分数重算，其余方法的组均值与总均值都是重算的。这意味着 80.7% 与 67.8% 这 12.9 点的差里，混入了两种平均口径的差异。</li>
 <li><strong>两个基准的基线集合不交叉。</strong>RMBench 有 EventVLA 与 Mem-0，RoboMME 没有；RoboMME 有一堆 TokenDrop / FrameSamp / TTT / RMT 这类「记忆表示策略」的受控变体，RMBench 没有。因此在什么基准上赢谁，不能互相外推。</li>
 <li><strong>真机样本量小且无方差。</strong>每任务 20 个 episode、单一随机种子，论文未报告置信区间或多种子波动。83.8% 与 30.0% 的差距远大于这种量级的噪声，方向上可信；但 85% 与 90% 这类任务间排序不应被当真。</li>
@@ -217,23 +219,22 @@
 <p>① 需要<strong>同一相机流内连续、可对齐</strong>的帧对——多相机异步、episode 内切换视角、或者频繁遮挡导致目标帧缺内容时，差分编码的是遮挡而不是任务状态；② 学出来的写入触发需要<strong>子目标边界标注</strong>，RMBench 上就是因为没有这个标注而直接关掉了事件库；③ 真机用的是官方通用 DeltaTok 权重、<strong>未做域适配</strong>，这套跨域泛化能力是外部组件的功劳，不能记在自己账上；④ 每个基准训一个联合策略、真机每种形态训一个策略，<strong>不是单一模型跨具身泛化</strong>。</p>
 </div>
 </div>
-<p><strong>延迟与显存。</strong>论文没有报告推理延迟、吞吐或显存占用，这些数字未在已核验的公开材料中确认。但结构上可以推算（本页推算，非论文数据）：RMBench 有 3 路相机（头 + 双腕），三组近期差分 → 9 个 delta token；四个锚帧 × 3 路 = 12 帧视觉 token。RoboMME 两路相机 → 6 个近期 delta，加上 16 条事件（16 个 delta + 16 帧主视）→ 事件部分就有 32 个条目。也就是说，事件库开满时，每步前向要多吞相当于十几帧的 token 量，且这是<strong>每步无条件全量读</strong>，没有检索裁剪。K=16 是有界但不算小，在 10 Hz 级别的控制频率下这很可能成为瓶颈——这一点必须自己先测，别照抄。</p>
-<p><strong>真机闭环风险。</strong>三个具体点。第一，<code>δ_e = 15</code> 是相对观测步的固定滞后，真机配置是「预测 30 步动作块、执行前 16 步后重规划」，15 步滞后与 16 步执行长度几乎重合，意味着事件 delta 的源帧可能正好落在上一次动作块的中段——差分描述的「变化」跨了一次重规划边界，语义上不再干净（此为本页基于配置的推断，论文未讨论）。第二，<code>R_t</code> 是累积的<strong>生成</strong>文本，一旦某步生成错的子任务，它会持续污染后续上下文，而系统无校验、无回滚；论文对此只做了声明，没有缓解。第三，事件写入是「预约 + 到点提交」，如果预约时刻的控制循环被跳过（真机上很常见），这次写入就永久丢失且不会被补偿。</p>
-<p><strong>最小改造方案。</strong>如果只想验证「差分是否有用」，不必动主干：在现有 VLA 的视觉前缀里，对最近三对 <code>(t−45,t−30)</code>、<code>(t−30,t−15)</code>、<code>(t−15,t)</code> 各插一个 delta token，插在目标帧之前；tokenizer 用冻结 DINOv3 + 单 token 瓶颈 + log-cosh 重建，在自己的演示数据上单独训到收敛（不需要动作标签）。这是最小改动、也最能证伪的一步。若这一步在你的任务上没有提升，问题多半出在配对（间隔太大、跨视角、跨 episode 边界）而不是表达力——先用 naive 特征相减做对照，如果相减反而更差而学出来的差分也没提升，说明你的场景里「变化」本身不是区分任务的变量，应当换别的记忆单位。</p>
-<p><strong>与站内其它路线的关系。</strong>本页认为它最适合与 <a href="../online-memory/index.html">专题三</a> 里以关键帧为单位的路线对照阅读：同样的「事件触发写入」机制，记忆单元换成差分后，在多阶段任务上拿到的增益明显更大（M(n) 54.0 → 76.5），代价是必须多训一个 tokenizer、并且丧失了「回看原始帧」的能力——它存的证据帧是绑在差分上的，不是独立可检索的帧库。</p>
+<p><strong>延迟与显存。</strong>论文没有报告推理延迟、吞吐或显存占用，这些数字未在已核验的公开材料中确认。但结构上可以推算（本页推算，非论文数据）：RMBench 有 3 路相机（头 + 双腕），三组近期差分 → 9 个 delta token；四个锚帧 \(\times\) 3 路 = 12 帧视觉 token。RoboMME 两路相机 → 6 个近期 delta，加上 16 条事件（16 个 delta + 16 帧主视）→ 事件部分就有 32 个条目。也就是说，事件库开满时，每步前向要多吞相当于十几帧的 token 量，且这是<strong>每步无条件全量读</strong>，没有检索裁剪。K=16 是有界但不算小，在 10 Hz 级别的控制频率下这很可能成为瓶颈——这一点必须自己先测，别照抄。</p>
+<p><strong>真机闭环风险。</strong>三个具体点。第一，\(\delta _{e} = 15\) 是相对观测步的固定滞后，真机配置是「预测 30 步动作块、执行前 16 步后重规划」，15 步滞后与 16 步执行长度几乎重合，意味着事件 delta 的源帧可能正好落在上一次动作块的中段——差分描述的「变化」跨了一次重规划边界，语义上不再干净（此为本页基于配置的推断，论文未讨论）。第二，\(R_{t}\) 是累积的<strong>生成</strong>文本，一旦某步生成错的子任务，它会持续污染后续上下文，而系统无校验、无回滚；论文对此只做了声明，没有缓解。第三，事件写入是「预约 + 到点提交」，如果预约时刻的控制循环被跳过（真机上很常见），这次写入就永久丢失且不会被补偿。</p>
+<p><strong>最小改造方案。</strong>如果只想验证「差分是否有用」，不必动主干：在现有 VLA 的视觉前缀里，对最近三对 \((t-45,t-30)\)、\((t-30,t-15)\)、\((t-15,t)\) 各插一个 delta token，插在目标帧之前；tokenizer 用冻结 DINOv3 + 单 token 瓶颈 + log-cosh 重建，在自己的演示数据上单独训到收敛（不需要动作标签）。这是最小改动、也最能证伪的一步。若这一步在你的任务上没有提升，问题多半出在配对（间隔太大、跨视角、跨 episode 边界）而不是表达力——先用 naive 特征相减做对照，如果相减反而更差而学出来的差分也没提升，说明你的场景里「变化」本身不是区分任务的变量，应当换别的记忆单位。</p>
+<p><strong>与站内其它路线的关系。</strong>本页认为它最适合与 <a href="../online-memory/index.html">专题三</a> 里以关键帧为单位的路线对照阅读：同样的「事件触发写入」机制，记忆单元换成差分后，在多阶段任务上拿到的增益明显更大（M(n) \(54.0\to 76.5\)），代价是必须多训一个 tokenizer、并且丧失了「回看原始帧」的能力——它存的证据帧是绑在差分上的，不是独立可检索的帧库。</p>
 
 <h2 id="repro">7 落地清单</h2>
 <ul class="checklist">
-<li><strong>先只训 tokenizer，把重建质量当验收门槛。</strong>冻结 DINOv3 ViT-B/16，输入 256×256，编码/解码各 12 层，输出 1 个 768 维 token；8 卡、每卡 batch 16、全局 128、lr 1e-4、weight decay 1e-2、梯度裁剪 1e-2、bf16，损失为 patch 与特征维上平均的 log-cosh。验收：在<strong>留出 episode</strong>（不是训练 episode）上，重建 log-cosh 必须明显低于「直接复制源特征」这个退化基线，否则 token 没有承载任何目标信息。</li>
+<li><strong>先只训 tokenizer，把重建质量当验收门槛。</strong>冻结 DINOv3 ViT-B/16，输入 \(256\times 256\)，编码/解码各 12 层，输出 1 个 768 维 token；8 卡、每卡 batch 16、全局 128、lr 1e-4、weight decay 1e-2、梯度裁剪 1e-2、bf16，损失为 patch 与特征维上平均的 log-cosh。验收：在<strong>留出 episode</strong>（不是训练 episode）上，重建 log-cosh 必须明显低于「直接复制源特征」这个退化基线，否则 token 没有承载任何目标信息。</li>
 <li><strong>把配对写成硬约束，不要留给 dataloader 自由采样。</strong>同相机流、同 episode、固定间隔 15 步、负索引 clamp 到 0、源帧不进 RGB 记忆、delta 紧跟目标帧。上线前打印 20 组抽样对的源/目标帧人眼过一遍——配对错误是这套方法最贵的 bug，而且它不会报错，只会悄悄掉点。</li>
-<li><strong>写入触发先用规则版，再考虑学习版。</strong>如果没有子目标边界标注，直接采用 RMBench 配置（关闭事件库，只保留首帧 + 近三帧 + 三组近期差分），这是本文验证过的可用最小集；有边界标注时再训 Keyframe Head，正类权重 7、<code>λ_kf = 1</code>、阈值 0.55、容量 K=16、FIFO 淘汰、episode 重置。</li>
+<li><strong>写入触发先用规则版，再考虑学习版。</strong>如果没有子目标边界标注，直接采用 RMBench 配置（关闭事件库，只保留首帧 + 近三帧 + 三组近期差分），这是本文验证过的可用最小集；有边界标注时再训 Keyframe Head，正类权重 7、\(\lambda _{kf} = 1\)、阈值 0.55、容量 K=16、FIFO 淘汰、episode 重置。</li>
 <li><strong>路由写死，别训分类器。</strong>论文明确用任务级配置而非学习路由：单段任务走 direct，多阶段任务走「先生成子任务再出动作」。落地时按任务语义分组即可，同时保留 direct 路径作为消融对照——去掉路由在 M(1) 上是零影响，这个对照能帮你判断你的任务到底属于哪一类。</li>
-<li><strong>必做 naive 特征差对照。</strong>同一批配对、同一投影层，把学出来的 <code>g_Δ</code> 换成「目标 DINOv3 特征 − 源 DINOv3 特征」。论文里它掉到 47.1%（比不给差分还低 5.2 点）。如果你的实现里这个对照<strong>没有</strong>明显掉点，说明你的差分模块和恒等映射等价，条件式瓶颈没起作用。</li>
-<li><strong>上线后监控三件事：</strong>每步写入事件的 <code>(κ, 源帧时刻, 触发概率)</code> 三元组、每步记忆序列的实际 token 数（对照你测到的延迟）、以及 <code>R_t</code> 的累积长度与重复率。第一条用来抓「源帧与目标帧之间其实没发生任务相关变化」的伪写入，后两条用来抓上下文膨胀与子任务文本自污染。</li>
+<li><strong>必做 naive 特征差对照。</strong>同一批配对、同一投影层，把学出来的 \(g_\Delta \) 换成「目标 DINOv3 特征 − 源 DINOv3 特征」。论文里它掉到 47.1%（比不给差分还低 5.2 点）。如果你的实现里这个对照<strong>没有</strong>明显掉点，说明你的差分模块和恒等映射等价，条件式瓶颈没起作用。</li>
+<li><strong>上线后监控三件事：</strong>每步写入事件的 (\(\kappa\), 源帧时刻, 触发概率) 三元组、每步记忆序列的实际 token 数（对照你测到的延迟）、以及 \(R_{t}\) 的累积长度与重复率。第一条用来抓「源帧与目标帧之间其实没发生任务相关变化」的伪写入，后两条用来抓上下文膨胀与子任务文本自污染。</li>
 </ul>
 <div class="srcbox">
 <p><b>来源：</b>Yuheng Na, Zhide Zhong, Junjie He, Junfeng Li, Haodong Yan, Jiaan Wang, Jiaguan Zhu, Yangyang Zheng, Tianyu Huang, Haoang Li, "EvoMem-VLA: State-Evolution Memory for Long-Horizon Robot Manipulation", arXiv:2610.05418v1, 2026-10-04；数字取自 Table 1（RMBench）、Table 2（RoboMME）、Table 3（消融）、Table 7–8 与 Appendix A.2–A.5、B.1–B.3（协议与超参）、Figure 3（真机四任务）。项目页 https://yuhengna.github.io/EvoMem-VLA/。</p>
-<p><b>图像说明：</b>图 1、图 2、图 3 均取自作者 LaTeX 源码包中的矢量原图（<code>evomem_vla_overview.pdf</code>、<code>evomem_vla_architecture.pdf</code>、<code>real_world_tasks_results.pdf</code>），用 PyMuPDF 以 150–300 dpi 渲染为 PNG，未做任何重绘或裁剪。原文对应 Figure 1、Figure 2、Figure 3。</p>
 </div>
 <p class="pagefoot">相关页面：<a href="../online-memory/index.html">专题三 · 在线记忆</a> · <a href="../mikasa-robo/index.html">MiKASA-Robo</a> · <a href="../../index.html">返回首页</a></p>
 </article>

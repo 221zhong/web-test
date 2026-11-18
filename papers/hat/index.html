@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>HAT｜专题一 · 历史关键事件检测</title>
 <link rel="stylesheet" href="../../style.css">
+<script src="../../mathjax-config.js"></script>
+<script defer src="../../vendor/mathjax/tex-svg.js"></script>
 </head>
 <body>
 <header>
@@ -37,7 +39,7 @@
 <div class="vt">决策卡</div>
 <p>可直接借“可学习 history token 压缩 + 交叉注意力注入 anchor”这套结构，让短窗口 anchor 带上过程先验；代价是历史长度按数据集手调且固定，历史写错后没有任何回退机制。</p>
 <dl>
-<dt>最小可复用件</dt><dd>以 <code>L_comp</code> 个可学习 history token 为 query、长历史特征为 key/value 的压缩解码器，后接用当前窗口类别弱监督的 anticipation head（权重 <code>γ = 0.2</code>）。</dd>
+<dt>最小可复用件</dt><dd>以 \(L_{comp}\) 个可学习 history token 为 query、长历史特征为 key/value 的压缩解码器，后接用当前窗口类别弱监督的 anticipation head（权重 \(\gamma  = 0.2\)）。</dd>
 <dt>主要风险</dt><dd>历史污染：错误片段经压缩后直接改写 anchor 表征，模块内没有门控、置信度或时间衰减。</dd>
 <dt>复现门槛</dt><dd>帧级预训练特征（I3D / SlowFast / TSN）与逐帧动作标注；训练时需要当前窗口的类别标签算辅助损失，推理不需要未来帧。</dd>
 </dl>
@@ -56,7 +58,7 @@
 <tr><th>方法</th><th>历史用法</th><th>监督是否用未来</th><th>提交粒度</th></tr>
 <tr><td>OAT</td><td>不用历史，只编码当前短窗口</td><td>否</td><td>实例级：每帧 M 个 anchor 经 NMS 与在线抑制网络提交，提交后不可改</td></tr>
 <tr><td>MATR</td><td>显式记忆库，按 flag 写入、FIFO 淘汰，可回溯超出窗口的起点</td><td>否，写入依据是当前片段与实例是否重叠</td><td>实例级：需等动作终点可见才提交</td></tr>
-<tr><td>HAT</td><td>固定长度连续历史（EGTEA/EK-100 上 48 个特征，约 24 秒），压成 <code>L_comp</code> 个 token 后注入 anchor</td><td>是，但只监督当前窗口的动作类别，且仅训练期使用</td><td>实例级：沿用 OAT 的每帧 NMS 与在线抑制，提交后不可改</td></tr>
+<tr><td>HAT</td><td>固定长度连续历史（EGTEA/EK-100 上 48 个特征，约 24 秒），压成 \(L_{comp}\) 个 token 后注入 anchor</td><td>是，但只监督当前窗口的动作类别，且仅训练期使用</td><td>实例级：沿用 OAT 的每帧 NMS 与在线抑制，提交后不可改</td></tr>
 </table>
 
 <h2 id="problem">3. 问题与动机</h2>
@@ -66,22 +68,22 @@
 
 <h2 id="method">4. 方法拆解</h2>
 <img class="figure" src="figures/fig2_architecture.png" alt="HAT 总体结构：左侧为长历史经 history compressor 压缩并由 action anticipation head 监督，右侧为短窗口 anchor 经交叉注意力注入精炼后的历史">
-<p class="caption">Figure 2，HAT 总体结构：future-supervised history module（压缩器 + 预判头 + 未来驱动精炼）与 history-augmented anchor module。原图 PDF 见 <code>figures/fig2_architecture.pdf</code>，由作者 LaTeX 源码 Figure 2 渲染。</p>
+<p class="caption">Figure 2：左侧 future-supervised history module 压缩、预判并精炼历史，右侧 history-augmented anchor module 将历史注入当前 anchor。</p>
 
 <h3>4.1 输入与时间表征</h3>
-<p>输入是帧级预训练特征：EGTEA 用 Kinetics 预训练 I3D，原帧率 24 FPS、stride 12，即每秒 2 个特征；EK-100 用 SlowFast，THUMOS 用双流 TSN，MUSES 用 I3D。特征经线性层投到 <code>D = 1024</code>，加位置编码后组成长度 <code>L_q = L_h + L_s</code> 的输入队列，再切成两段：右端紧贴当前时刻的短窗口 <code>S</code>（长度 <code>L_s</code>）与它之前的连续历史 <code>H</code>（长度 <code>L_h</code>）。EGTEA/EK-100 取 <code>L_h = 48</code>、<code>L_s = 16</code>，对应 24 秒历史与 8 秒短窗口；THUMOS 取 256/64，MUSES 取 300/150。</p>
-<p>两点对实现有影响。历史是紧邻短窗口的连续片段，不做稀疏采样、不跨越空档，所以模型看到的是最近 24 秒的全部内容，而不是整段视频的关键帧摘要。短窗口长度同时决定 anchor 可表达的最大时长：EGTEA/EK-100 的 6 个 anchor 为 2/4/6/8/12/16 个特征，最长 anchor 正好等于 <code>L_s</code>。</p>
+<p>输入是帧级预训练特征：EGTEA 用 Kinetics 预训练 I3D，原帧率 24 FPS、stride 12，即每秒 2 个特征；EK-100 用 SlowFast，THUMOS 用双流 TSN，MUSES 用 I3D。特征经线性层投到 \(D = 1024\)，加位置编码后组成长度 \(L_{q} = L_{h} + L_{s}\) 的输入队列，再切成两段：右端紧贴当前时刻的短窗口 \(S\)（长度 \(L_{s}\)）与它之前的连续历史 \(H\)（长度 \(L_{h}\)）。EGTEA/EK-100 取 \(L_{h} = 48\)、\(L_{s} = 16\)，对应 24 秒历史与 8 秒短窗口；THUMOS 取 256/64，MUSES 取 300/150。</p>
+<p>两点对实现有影响。历史是紧邻短窗口的连续片段，不做稀疏采样、不跨越空档，所以模型看到的是最近 24 秒的全部内容，而不是整段视频的关键帧摘要。短窗口长度同时决定 anchor 可表达的最大时长：EGTEA/EK-100 的 6 个 anchor 为 2/4/6/8/12/16 个特征，最长 anchor 正好等于 \(L_{s}\)。</p>
 
 <h3>4.2 关键机制</h3>
-<p><b>压缩。</b>长度 <code>L_comp ≪ L_h</code> 的可学习 history token 作 query，历史特征 <code>H</code> 作 key/value，经 <code>N_c = 5</code> 个解码块得到 <code>H_comp</code>。压缩把读取历史的代价从随 <code>L_h</code> 平方增长变成随 <code>L_comp × L_h</code> 线性增长，也让后续与 anchor 的交互只在少量 token 上做。</p>
-<p><b>未来监督。</b>监督目标不是下一片段的特征回归，也不是帧级标签，而是当前滑动窗口 <code>S</code> 内出现的动作类别——对历史编码器而言这就是“未来”。粒度是窗口级弱监督，输出一个 <code>C</code> 维类别向量；结构为线性层降维到 <code>D/4</code>、展平、两层全连接（ReLU 与 sigmoid）。梯度只经压缩器回传，压缩器因此必须保留能预测“接下来发生什么”的帧，这是它区别于普通池化压缩的关键。</p>
+<p><b>压缩。</b>长度 \(L_{comp} \ll  L_{h}\) 的可学习 history token 作 query，历史特征 \(H\) 作 key/value，经 \(N_{c} = 5\) 个解码块得到 \(H_{comp}\)。压缩把读取历史的代价从随 \(L_{h}\) 平方增长变成随 \(L_{comp} \times  L_{h}\) 线性增长，也让后续与 anchor 的交互只在少量 token 上做。</p>
+<p><b>未来监督。</b>监督目标不是下一片段的特征回归，也不是帧级标签，而是当前滑动窗口 \(S\) 内出现的动作类别——对历史编码器而言这就是“未来”。粒度是窗口级弱监督，输出一个 \(C\) 维类别向量；结构为线性层降维到 \(D/4\)、展平、两层全连接（ReLU 与 sigmoid）。梯度只经压缩器回传，压缩器因此必须保留能预测“接下来发生什么”的帧，这是它区别于普通池化压缩的关键。</p>
 <p><b>与 OadTR 的分界。</b>OadTR 也做未来预测，但那是解码端一个独立的辅助预测头，输出未来若干步的预测后不再参与当前检测表征；HAT 的 anticipation head 同样是分类头，梯度却回传到历史压缩器，改写的是送进分类器的 anchor 表征本身。</p>
-<p><b>精炼与注入。</b>压缩历史作 query、短窗口编码 <code>S_enc</code> 作 key/value，经 <code>N_r = 2</code> 个解码块，用当前上下文校准历史注意力，再加残差与归一化：<code>H_ref = Norm(d(H_comp, S_enc) + H_comp)</code>。anchor 侧沿用 OAT：<code>S</code> 经编码器得到 <code>S_enc</code>，再由带可学习 anchor query 的解码器产生 <code>A</code>。历史进入 anchor 的方式不是拼接，而是把 <code>A</code> 作 query、<code>H_ref</code> 作 key/value 再做一次交叉注意力：<code>A_final = Norm(d(A, H_ref) + A)</code>。作者把这套融合与替代方案做了对比（Table 7，EGTEA split-1 平均 mAP）：平均池化 19.3、拼接 19.5、LSTR 的 Temporal NLB 20.3、Transformer 解码器 20.8。</p>
+<p><b>精炼与注入。</b>压缩历史作 query、短窗口编码 \(S_{enc}\) 作 key/value，经 \(N_{r} = 2\) 个解码块，用当前上下文校准历史注意力，再加残差与归一化：\(H_{ref} = Norm(d(H_{comp}, S_{enc}) + H_{comp})\)。anchor 侧沿用 OAT：\(S\) 经编码器得到 \(S_{enc}\)，再由带可学习 anchor query 的解码器产生 \(A\)。历史进入 anchor 的方式不是拼接，而是把 \(A\) 作 query、\(H_{ref}\) 作 key/value 再做一次交叉注意力：\(A_{final} = Norm(d(A, H_{ref}) + A)\)。作者把这套融合与替代方案做了对比（Table 7，EGTEA split-1 平均 mAP）：平均池化 19.3、拼接 19.5、LSTR 的 Temporal NLB 20.3、Transformer 解码器 20.8。</p>
 
 <h3>4.3 输出与在线边界</h3>
-<p>预测头接在 <code>A_final</code> 上，同时给出类别、目标终点相对 anchor 终点的偏移、以及目标时长与 anchor 时长的比值。每帧产生 M 个 proposal，过滤背景后做单帧 NMS，再送入在线抑制网络，按置信度历史决定是否写入最终实例集。整个流程是因果的：所有输入特征满足 <code>i ≤ t</code>，<code>S</code> 的右端就是当前时刻。</p>
-<p>“未来”只在训练目标里出现，而且只是相对历史编码器的未来——即仍然落在 <code>t</code> 之内的当前窗口。推理时 anticipation head 的输出被直接丢弃，模型只用训练好的压缩器与精炼器，因此在线约束成立，不存在读取未来帧的问题。这也意味着该模块的收益完全依赖训练期标签：窗口类别标签缺失时，辅助损失无从计算。</p>
-<p>训练目标为 <code>L = αL_c + β(L_o + L_l) + γL_a</code>，取 <code>α = β = 1</code>、<code>γ = 0.2</code>；分类项用自适应焦点损失，回归项为终点偏移与长度的 L1 损失。论文报告在 RTX 4090 上 147 FPS，按 OnTAL 惯例这是模型前向速度，部署时视觉编码器的开销需另算。</p>
+<p>预测头接在 \(A_{final}\) 上，同时给出类别、目标终点相对 anchor 终点的偏移、以及目标时长与 anchor 时长的比值。每帧产生 M 个 proposal，过滤背景后做单帧 NMS，再送入在线抑制网络，按置信度历史决定是否写入最终实例集。整个流程是因果的：所有输入特征满足 \(i \le  t\)，\(S\) 的右端就是当前时刻。</p>
+<p>“未来”只在训练目标里出现，而且只是相对历史编码器的未来——即仍然落在 \(t\) 之内的当前窗口。推理时 anticipation head 的输出被直接丢弃，模型只用训练好的压缩器与精炼器，因此在线约束成立，不存在读取未来帧的问题。这也意味着该模块的收益完全依赖训练期标签：窗口类别标签缺失时，辅助损失无从计算。</p>
+<p>训练目标为 \(L = \alpha L_{c} + \beta (L_{o} + L_{l}) + \gamma L_{a}\)，取 \(\alpha  = \beta  = 1\)、\(\gamma  = 0.2\)；分类项用自适应焦点损失，回归项为终点偏移与长度的 L1 损失。论文报告在 RTX 4090 上 147 FPS，按 OnTAL 惯例这是模型前向速度，部署时视觉编码器的开销需另算。</p>
 
 <h2 id="evidence">5. 证据与实验</h2>
 <p>Table 1 在 PREGO 上报告 tIoU 0.1–0.5 的 mAP：EGTEA 上 OAT 19.6、HAT 21.5；EK-100 上 14.2 升到 15.3。Table 2 在非 PREGO 上报告 0.3–0.7：THUMOS 44.6 升到 44.8，MUSES 9.8（OAT 的重建结果，原文标星）升到 10.8。方向与主张一致——过程性越强、每段视频类别越多，收益越大；但 THUMOS 上 0.2 的提升不足以支撑“通用更优”的说法。</p>
@@ -93,20 +95,19 @@
 <div><h4>可迁移</h4><p>“少量可学习 token 压缩长历史”与“用接下来会发生什么的弱标签校准压缩器”可以整体搬到机器人策略里：把 24 秒固定窗口换成固定数量的已完成子任务 token，压缩器输出直接作为策略或阶段分类器的条件。交叉注意力注入 anchor 的做法也比拼接更容易控制历史的影响强度。</p></div>
 <div><h4>不成立的前提</h4><p>OnTAL 假设动作是闭集、步骤顺序清晰、历史等间隔采样、每帧都要输出 proposal。机器人历史是“已完成子任务 + 物体状态”，事件稀疏且不等长；147 FPS 不含视觉编码器；模块没有任何写入可靠性判断。步骤顺序被打断（返工、跳步）时，固定 24 秒窗口里可能全是无关片段。</p></div>
 </div>
-<p>在机器人任务里，HAT 的连续历史对应的是已完成子任务序列：取刀、取番茄、放到砧板，每一步留下的是物体状态与位姿变化，而不是 48 个等间隔帧特征。映射时要注意粒度——视频每秒 2 个特征，控制回路常在 10–30 Hz，照抄 48 步只有 2–5 秒；应按“最多回看多少个已完成子任务”设 <code>L_h</code>，把每个子任务压成一到几个 token，让 <code>L_comp</code> 与任务步数同阶。</p>
-<p>错误历史的污染路径很直接：压缩器没有写入门控，也没有置信度或时间衰减。一旦上游把“已拿起刀”误判并写入缓冲，这类片段会和其他历史一起被压进 <code>H_comp</code>，再作为 key/value 参与 anchor 的交叉注意力；当前 anchor 若正处在“切”与“抓”的边界，历史证据会把分类与边界回归一起推向错误的一侧，而且错误会随窗口滑动持续存在。这与 MATR 的 flag 门控加 FIFO 形成对照：HAT 规定“读多长”，不规定“信多少”。最小改造是在写入侧加置信度阈值与淘汰规则，在读取侧给历史 token 加可学习的时间衰减或可靠性权重。</p>
+<p>在机器人任务里，HAT 的连续历史对应的是已完成子任务序列：取刀、取番茄、放到砧板，每一步留下的是物体状态与位姿变化，而不是 48 个等间隔帧特征。映射时要注意粒度——视频每秒 2 个特征，控制回路常在 10–30 Hz，照抄 48 步只有 2–5 秒；应按“最多回看多少个已完成子任务”设 \(L_{h}\)，把每个子任务压成一到几个 token，让 \(L_{comp}\) 与任务步数同阶。</p>
+<p>错误历史的污染路径很直接：压缩器没有写入门控，也没有置信度或时间衰减。一旦上游把“已拿起刀”误判并写入缓冲，这类片段会和其他历史一起被压进 \(H_{comp}\)，再作为 key/value 参与 anchor 的交叉注意力；当前 anchor 若正处在“切”与“抓”的边界，历史证据会把分类与边界回归一起推向错误的一侧，而且错误会随窗口滑动持续存在。这与 MATR 的 flag 门控加 FIFO 形成对照：HAT 规定“读多长”，不规定“信多少”。最小改造是在写入侧加置信度阈值与淘汰规则，在读取侧给历史 token 加可学习的时间衰减或可靠性权重。</p>
 
 <h2 id="repro">7. 落地清单</h2>
 <ul class="checklist">
 <li>按秒设定历史长度：以 24 秒为初值，复现 Table 6 的长度扫描，记录收益饱和点，再换算成机器人控制步数。</li>
-<li>用 <code>L_comp</code> 个可学习 history token 压缩历史，不要直接把长历史拼接进短窗口输入。</li>
-<li>把 anticipation head 的监督换成“当前窗口内技能类别”，从 <code>γ = 0.2</code> 起步，并确认推理时丢弃该头。</li>
+<li>用 \(L_{comp}\) 个可学习 history token 压缩历史，不要直接把长历史拼接进短窗口输入。</li>
+<li>把 anticipation head 的监督换成“当前窗口内技能类别”，从 \(\gamma  = 0.2\) 起步，并确认推理时丢弃该头。</li>
 <li>给历史写入加置信度门控与 FIFO 淘汰，先以 MATR 的 flag 规则作基线，再比较错误历史被放大的频率。</li>
 <li>按 Table 3 的顺序做消融（去预判头、去精炼、去整个模块），确认增益来自监督信号而非参数量。</li>
 </ul>
 <div class="srcbox">
 <p><b>来源：</b>arXiv:2408.06437（v1，2024-08-12，含补充材料 Table 6–8）；ECCV 2024 论文（ECVA papers 03153）；官方代码 https://github.com/sakibreza/ECCV24-HAT 。数据集与实现细节见正文 4.1–4.2 节，全部数值取自 Table 1、2、3、4、6、7、8。</p>
-<p><b>图像说明：</b>Figure 2 由作者 LaTeX 源码渲染为 PNG，原始 PDF 为 <code>figures/fig2_architecture.pdf</code>。</p>
 </div>
 <p class="pagefoot">相关页面：<a href="../oat/index.html">OAT · 滑窗 anchor</a> · <a href="../matr/index.html">MATR · 记忆库</a> · <a href="../oadtr/index.html">OadTR · 未来预测</a> · <a href="../../index.html">返回总站</a></p>
 </article>

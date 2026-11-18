@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>OadTR｜专题一 · 历史关键事件检测</title>
 <link rel="stylesheet" href="../../style.css">
+<script src="../../mathjax-config.js"></script>
+<script defer src="../../vendor/mathjax/tex-svg.js"></script>
 </head>
 <body>
 <header>
@@ -64,18 +66,18 @@
 
 <h2 id="method">4. 方法拆解</h2>
 <img class="figure" src="figures/fig2_architecture.png" alt="OadTR 架构图：左侧 encoder 接收历史 frame chunk 特征与尾部 task token，经位置编码和多头自注意力编码；encoder 的 task token 输出与 decoder 预测特征的池化结果拼接后送入分类器">
-<p class="caption">Fig. 2：左侧为 encoder（N 层，输入 f<sub>-T</sub> 至 f<sub>0</sub> 加 task token），右侧为 decoder（M 层，ℓ<sub>d</sub> 个预测 query），顶部为 task token 与池化预测特征的拼接分类。由作者 LaTeX 源码原图 <code>fig2_architecture.pdf</code> 渲染，原 PDF 见 <code>figures/fig2_architecture.pdf</code>。</p>
+<p class="caption">Figure 2：编码器读取历史特征与 task token，解码器生成未来预测 query；顶部分类头融合 task token 与池化预测特征。</p>
 
 <h3>4.1 输入与时间表征</h3>
 <p>输入不是切分好的动作片段，而是每个时间步一个 frame chunk 的 two-stream 特征：TSN-Anet 为 3072 维，TSN-Kinetics 为 4096 维，二者都由 ResNet-200 与 BN-Inception 双流网络离线提取。线性层把每步特征投影到 D 维，得到 token 序列；由于 self-attention 本身不带顺序，序列上再逐元素加位置编码（论文比较了正弦、固定与可学习三种，HDD 上可学习最好，Table 5d）。窗口长度 T 在 HDD 上取 31，在 TVSeries 与 THUMOS14 上取 63，即输入为 T+1 个历史 token 再加一个 task token，共 T+2 个位置。窗口随流式输入滑动，超出的旧帧直接丢弃，没有跨窗口记忆，也没有对历史做压缩或摘要。frame chunk 具体包含多少帧、特征按多少 fps 抽取，未在已核验的公开材料中确认。</p>
 
 <h3>4.2 关键机制</h3>
-<p><b>task token 的读入与作用。</b>task token 是一个可学习的 D 维向量 <code>token_class</code>，与历史 token 拼在同一序列里（Fig. 2 中位于最右端的红色 token），因此它天然参与每一层多头自注意力：它不携带任何时刻的内容，只通过 attention 从历史 token 中读取与任务相关的信息。编码结束后取它对应的输出 <code>m_token</code> 作为分类表示，而不是取 f<sub>0</sub> 位置的输出。作者用 Fig. 3 的相似度分布说明理由：没有 task token 时，分类特征与 f<sub>0</sub> 输入特征的相似度最高，表示被最后一个位置主导；加入之后相似度分布被摊平，模型可以自行决定哪些历史步更重要。</p>
-<p><b>未来预测分支。</b>decoder 有 ℓ<sub>d</sub> 个可学习预测 query，每层并行解码，通过 cross-attention 读取 encoder 的输出，得到未来若干步的预测 <code>êQ_i</code>。这些输出经 softmax 后与未来动作标签算交叉熵，与当前分类损失联合优化：<code>Loss = CE(p0, y0) + λ Σ CE(êp_i, ŷ_i)</code>，λ 取 0.5。摘要与正文把它描述为“预测未来 clip 表征”，但 Eq. 12–13 实际监督的是未来动作类别，本页以公式为准。</p>
-<p><b>分类读出。</b>decoder 的 ℓ<sub>d</sub> 个输出先做平均池化，再与 <code>m_token</code> 拼接，经全连接层与 softmax 得到当前类别：<code>p0 = softmax(Concat[m_token, AvgPool(êQ)] W_c)</code>。因此该分支在推理时仍会运行，其池化特征进入分类器，但输入侧始终只有历史。默认配置在多数数据集上为 N=3、M=5、ℓ<sub>d</sub>=8；THUMOS14 上 4 头、1024 维最优（Table 5e、5f、6、7）。</p>
+<p><b>task token 的读入与作用。</b>task token 是一个可学习的 D 维向量 <code>token_class</code>，与历史 token 拼在同一序列里（Fig. 2 中位于最右端的红色 token），因此它天然参与每一层多头自注意力：它不携带任何时刻的内容，只通过 attention 从历史 token 中读取与任务相关的信息。编码结束后取它对应的输出 <code>m_token</code> 作为分类表示，而不是取 \(f_{0}\) 位置的输出。作者用 Fig. 3 的相似度分布说明理由：没有 task token 时，分类特征与 \(f_{0}\) 输入特征的相似度最高，表示被最后一个位置主导；加入之后相似度分布被摊平，模型可以自行决定哪些历史步更重要。</p>
+<p><b>未来预测分支。</b>decoder 有 \(\ell _{d}\) 个可学习预测 query，每层并行解码，通过 cross-attention 读取 encoder 的输出，得到未来若干步的预测 \(\hat Q_i\)。这些输出经 softmax 后与未来动作标签算交叉熵，与当前分类损失联合优化：\(\mathcal{L}=\operatorname{CE}(p_0,y_0)+\lambda\sum_i\operatorname{CE}(\hat p_i,\hat y_i)\)，\(\lambda=0.5\)。摘要与正文把它描述为“预测未来 clip 表征”，但 Eq. 12–13 实际监督的是未来动作类别，本页以公式为准。</p>
+<p><b>分类读出。</b>decoder 的 \(\ell _{d}\) 个输出先做平均池化，再与 <code>m_token</code> 拼接，经全连接层与 softmax 得到当前类别：\(p_0= \operatorname{softmax}(\operatorname{Concat}[m_{\mathrm{token}}, \operatorname{AvgPool}(\hat Q)] W_c)\)。因此该分支在推理时仍会运行，其池化特征进入分类器，但输入侧始终只有历史。默认配置在多数数据集上为 \(N=3\)、\(M=5\)、\(\ell _{d}\)=8；THUMOS14 上 4 头、1024 维最优（Table 5e、5f、6、7）。</p>
 
 <h3>4.3 输出与在线边界</h3>
-<p>推理是因果的：第 t 步只读 f<sub>-T</sub> 到 f<sub>0</sub>，不使用任何未来帧，也不使用未来标签；未来只出现在训练损失里。单步流程为：抽取当前 frame chunk 特征 → 推入窗口并丢弃最旧一项 → 整个窗口加位置编码过 encoder → 取 task token 输出并与 decoder 池化预测拼接 → 线性层加 softmax → 输出当前类别。窗口每步整体重算，论文没有描述跨步缓存或增量注意力；输出平滑与提交阈值也未给出规则，属未在已核验的公开材料中确认。</p>
+<p>推理是因果的：第 t 步只读 \(f_{-T}\) 到 \(f_{0}\)，不使用任何未来帧，也不使用未来标签；未来只出现在训练损失里。单步流程为：抽取当前 frame chunk 特征 → 推入窗口并丢弃最旧一项 → 整个窗口加位置编码过 encoder → 取 task token 输出并与 decoder 池化预测拼接 → 线性层加 softmax → 输出当前类别。窗口每步整体重算，论文没有描述跨步缓存或增量注意力；输出平滑与提交阈值也未给出规则，属未在已核验的公开材料中确认。</p>
 <p>因此它不能直接给出事件边界。输出是“每步属于哪一类”，一个动作实例在时间轴上表现为一段连续的同类标签；起止只能由标签变化间接推断，且这种推断会同时受类别抖动与窗口滞后影响：窗口长 T 步，阶段切换后旧上下文仍占多数，标签可能延迟若干步才翻转。把标签变化转成候选提交，至少需要三件事：连续 k 步同类才确认（抑制单帧抖动）、最小持续时长（过滤瞬时误检）、以窗口内该类概率的均值或最小值作为候选置信度。得到的是“候选区间 + 置信度”，仍需上层去重与合并。</p>
 
 <h2 id="evidence">5. 证据与实验</h2>
@@ -88,18 +90,18 @@
 <tr><td>THUMOS14 / TSN-Anet</td><td>mAP</td><td>58.3</td><td>IDN 50.0（+8.3）</td><td>Table 3</td></tr>
 <tr><td>THUMOS14 / TSN-Kinetics</td><td>mAP</td><td>65.2</td><td>IDN 60.3（+4.9）</td><td>Table 3</td></tr>
 </table>
-<p>消融以“无 task token 的 encoder”为基线（Table 5a–c）：HDD 28.7 → 29.8，TVSeries 84.8 → 85.4，THUMOS14 55.8 → 58.3；单独加 task token 或单独加 decoder 都有增益，两者同用时最好，作者给出的相对基线提升为 1.1、0.6、2.5 个百分点。Table 7 显示编码/解码层数在多数情况下 N=3、M=5 最优，但 TVSeries 有波动（N=2 时 85.5，高于 Table 2 的 85.4）。这些结果是逐帧分类指标：它们奖励整段视频上的类别排序，不惩罚“阶段开始后很久才翻转标签”，也不检查起止误差，因此不能用来论证该模型适合事件提交。</p>
+<p>消融以“无 task token 的 encoder”为基线（Table 5a–c）：HDD 28.7 → 29.8，TVSeries 84.8 → 85.4，THUMOS14 55.8 → 58.3；单独加 task token 或单独加 decoder 都有增益，两者同用时最好，作者给出的相对基线提升为 1.1、0.6、2.5 个百分点。Table 7 显示编码/解码层数在多数情况下 \(N=3\)、\(M=5\) 最优，但 TVSeries 有波动（\(N=2\) 时 85.5，高于 Table 2 的 85.4）。这些结果是逐帧分类指标：它们奖励整段视频上的类别排序，不惩罚“阶段开始后很久才翻转标签”，也不检查起止误差，因此不能用来论证该模型适合事件提交。</p>
 
 <h2 id="fit">6. 优点、局限与 VLA 适配</h2>
 <div class="duo">
 <div><h4>可迁移</h4><p>task token 的角色可以直接换成子任务 embedding：把“当前该做什么”编码成一个可学习或由语言指令投影得到的向量，让它与历史状态交互，输出阶段后验。历史窗口对应 VLA 的 state-action 序列，每个时间步是“观测 token + 动作 token”。未来预测分支则对应“预测下一子任务 / 下一接触状态”，只在训练期用示教标签监督，推理时仍然因果。标签跳变可以当作阶段切换的弱信号，用来触发候选写入。</p></div>
 <div><h4>不成立的前提</h4><p>视频帧率与机器人控制频率不同，63 步在视频里可能只有两秒，在 10 Hz 控制下却超过六秒，阶段早已变化，窗口长度必须按秒而非按帧重设。闭集类别与单标签假设也不成立：VLA 常需要多标签、开集指令与“进行中/已完成”的状态区分。未来标签在示教数据里可得，在自主采集数据里不可得，辅助损失需要改成自监督或仅用回放数据。two-stream 特征是离线预提取的，在线系统要自己跑视觉编码器，延迟预算完全不同。</p></div>
 </div>
-<p>延迟与显存代价主要来自“每步重算整个窗口”：self-attention 的计算随 T+2 的平方增长，激活占用随批大小与 T 线性增长；T=63、D=1024 时注意力不重，但与视觉编码器、语言模型同驻时显存峰值叠加，且每步都付一次完整前向。最小改造是引入 KV cache，只编码新到达的 token；再把窗口单位从帧换成事件或控制步，用分段 token 代替逐帧 token，长历史才能扩展到分钟级。若还要事件级输出，应在 task token 旁增加一个切换头（预测“本步是否为阶段起点”），而不是继续从标签序列事后切分。</p>
+<p>延迟与显存代价主要来自“每步重算整个窗口”：self-attention 的计算随 T+2 的平方增长，激活占用随批大小与 T 线性增长；\(T=63\)、\(D=1024\) 时注意力不重，但与视觉编码器、语言模型同驻时显存峰值叠加，且每步都付一次完整前向。最小改造是引入 KV cache，只编码新到达的 token；再把窗口单位从帧换成事件或控制步，用分段 token 代替逐帧 token，长历史才能扩展到分钟级。若还要事件级输出，应在 task token 旁增加一个切换头（预测“本步是否为阶段起点”），而不是继续从标签序列事后切分。</p>
 
 <h2 id="repro">7. 落地清单</h2>
 <ul class="checklist">
-<li>复现 encoder + task token 读出头，在自有序列上固定 T=63 跑通逐帧分类，先只对齐类别准确率与延迟。</li>
+<li>复现 encoder + task token 读出头，在自有序列上固定 \(T=63\) 跑通逐帧分类，先只对齐类别准确率与延迟。</li>
 <li>把窗口单位从视频帧改为控制步或事件段，按秒重设 T，并记录每步端到端延迟与显存峰值。</li>
 <li>将 decoder 的未来预测目标替换为下一子任务或接触状态标签，确认推理路径不读未来观测。</li>
 <li>在类别输出后加连续 k 步确认、最小持续时长与置信度阈值，把标签跳变转成候选提交并记录待定/已提交状态。</li>
@@ -107,7 +109,6 @@
 </ul>
 <div class="srcbox">
 <p><b>来源：</b>CVF 论文页（ICCV 2021，<a href="https://openaccess.thecvf.com/content/ICCV2021/html/Wang_OadTR_Online_Action_Detection_With_Transformers_ICCV_2021_paper.html">openaccess.thecvf.com</a>）；arXiv:2106.11149v1（2021-06-21，<a href="https://arxiv.org/abs/2106.11149">abs</a>）；官方代码 <a href="https://github.com/wangxiang1230/OadTR">github.com/wangxiang1230/OadTR</a>。数据集规模、超参与全部数字取自 arXiv v1 正文 Sec. 3–4 与 Table 1–7。</p>
-<p><b>图像说明：</b>Fig. 2 由作者 LaTeX 源码中的原图 PDF 渲染为 PNG，未裁剪、未改绘；原图 PDF 见 <code>figures/fig2_architecture.pdf</code>。</p>
 </div>
 <p class="pagefoot">相关页面：<a href="../matr/index.html">MATR</a> · <a href="../oat/index.html">OAT</a> · <a href="../index.html">专题一总览</a> · <a href="../../index.html">返回总站</a></p>
 </article>
